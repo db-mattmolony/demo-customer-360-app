@@ -1,0 +1,43 @@
+/* Custom CSS for Betashares Customer 360 App */
+
+/* Orange Range Slider Styling */
+.orange-slider .rc-slider-track {
+    background-color: #ff5722 !important;
+}
+
+.orange-slider .rc-slider-handle {
+    border-color: #ff5722 !important;
+    background-color: #ff5722 !important;
+}
+
+.orange-slider .rc-slider-handle:hover {
+    border-color: #ff7043 !important;
+}
+
+.orange-slider .rc-slider-handle:active {
+    border-color: #ff5722 !important;
+    box-shadow: 0 0 5px #ff5722 !important;
+}
+
+.orange-slider .rc-slider-handle:focus {
+    border-color: #ff5722 !important;
+    box-shadow: 0 0 0 3px rgba(255, 87, 34, 0.2) !important;
+}
+
+.orange-slider .rc-slider-dot-active {
+    border-color: #ff5722 !important;
+}
+
+.orange-slider .rc-slider-mark-text-active {
+    color: #ff5722 !important;
+}
+
+/* Tooltip styling for slider */
+.orange-slider .rc-slider-tooltip-inner {
+    background-color: #ff5722 !important;
+}
+
+.orange-slider .rc-slider-tooltip-arrow {
+    border-top-color: #ff5722 !important;
+}
+

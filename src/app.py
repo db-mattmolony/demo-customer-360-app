@@ -3,7 +3,8 @@ Customer 360 Dash Application
 A multi-tab dashboard for comprehensive customer analytics.
 """
 
-from dash import Dash, html, dcc, callback, Output, Input, dash_table
+from dash import Dash, html, dcc, callback, Output, Input, State, dash_table
+import dash
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
@@ -29,6 +30,127 @@ COLORS = {
     'border': '#e0e0e0'
 }
 
+# Helper function to create customer map using Plotly
+def create_customer_map(df):
+    """
+    Create a Plotly Scattergeo map with customer locations.
+    
+    Args:
+        df: DataFrame with lat, lon, and customer info columns
+        
+    Returns:
+        plotly.graph_objects.Figure: Interactive map figure
+    """
+    if df.empty or 'lat' not in df.columns or 'lon' not in df.columns:
+        # Return empty map
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No customer data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color=COLORS['text_secondary'])
+        )
+        fig.update_layout(
+            template='plotly_white',
+            paper_bgcolor=COLORS['card_background'],
+            height=500,
+            margin=dict(t=0, b=0, l=0, r=0)
+        )
+        return fig
+    
+    # Filter out rows with null lat/lon
+    map_df = df.dropna(subset=['lat', 'lon']).copy()
+    
+    if map_df.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No location data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color=COLORS['text_secondary'])
+        )
+        fig.update_layout(
+            template='plotly_white',
+            paper_bgcolor=COLORS['card_background'],
+            height=500,
+            margin=dict(t=0, b=0, l=0, r=0)
+        )
+        return fig
+    
+    # Add risk status and color (using churn_status from SQL)
+    map_df['risk_status'] = map_df['churn_status'].apply(lambda x: f"🔴 {x}" if x == 'At Risk' else f"🟢 {x}")
+    map_df['marker_color'] = map_df['churn_status'].apply(lambda x: COLORS['accent'] if x == 'At Risk' else '#7FB800')
+    
+    # Create hover text
+    map_df['hover_text'] = map_df.apply(lambda row: 
+        f"<b>{row.get('firstname', 'N/A')} {row.get('lastname', 'N/A')}</b><br>" +
+        f"Email: {row.get('email', 'N/A')}<br>" +
+        f"Country: {row.get('country', 'N/A')}<br>" +
+        f"Status: {row['risk_status']}<br>" +
+        f"<br>" +
+        f"CLV: ${row.get('customer_lifetime_value', 0):,.2f}<br>" +
+        f"VIP Probability: {row.get('vip_customer_probability', 0):.1%}<br>" +
+        f"Segment: {row.get('market_segment', 'N/A')}<br>" +
+        f"Orders: {row.get('order_count', 0)}<br>" +
+        f"Total Spent: ${row.get('total_amount', 0):,.2f}",
+        axis=1
+    )
+    
+    # Create the map
+    fig = go.Figure()
+    
+    # Add traces for each risk category
+    for risk_status in map_df['risk_status'].unique():
+        mask = map_df['risk_status'] == risk_status
+        filtered = map_df[mask]
+        
+        fig.add_trace(go.Scattergeo(
+            lon=filtered['lon'],
+            lat=filtered['lat'],
+            text=filtered['hover_text'],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=filtered['marker_color'].iloc[0],
+                line=dict(width=1, color='white'),
+                opacity=0.8
+            ),
+            name=risk_status,
+            hovertemplate='%{text}<extra></extra>'
+        ))
+    
+    # Update layout
+    fig.update_layout(
+        geo=dict(
+            scope='world',
+            showland=True,
+            landcolor='rgb(243, 243, 243)',
+            coastlinecolor='rgb(204, 204, 204)',
+            projection_type='natural earth',
+            showlakes=True,
+            lakecolor='rgb(255, 255, 255)',
+            showcountries=True,
+            countrycolor='rgb(204, 204, 204)'
+        ),
+        template='plotly_white',
+        paper_bgcolor=COLORS['card_background'],
+        height=500,
+        margin=dict(t=0, b=0, l=0, r=0),
+        showlegend=True,
+        legend=dict(
+            orientation='h',
+            yanchor='bottom',
+            y=0.02,
+            xanchor='right',
+            x=0.98,
+            bgcolor='rgba(255,255,255,0.9)',
+            bordercolor=COLORS['border'],
+            borderwidth=1
+        )
+    )
+    
+    return fig
+
 # Initialize services
 c360_service = get_c360_service()
 churn_service = get_churn_service()
@@ -36,14 +158,20 @@ clv_service = get_clv_service()
 segmentation_service = get_segmentation_service()
 vip_service = get_vip_service()
 
-# Fetch churn features data from Databricks (limited to 100 rows for C360 tab)
+# Initialize empty dataframe for C360 tab (data loads on first filter application)
 try:
-    churn_features_df = c360_service.get_churn_features(limit=100)
+    # Don't load table data initially - only load filter options
+    churn_features_df = pd.DataFrame()  # Empty - will load on Apply Filters click
     churn_summary_df = c360_service.get_churn_summary()
+    filter_options = c360_service.get_filter_options()
+    # Create empty initial map
+    initial_map_fig = create_customer_map(pd.DataFrame())
 except Exception as e:
-    print(f"Error loading churn features: {e}")
+    print(f"Error loading filter options: {e}")
     churn_features_df = pd.DataFrame()
     churn_summary_df = pd.DataFrame()
+    filter_options = {'countries': [], 'segments': []}
+    initial_map_fig = create_customer_map(pd.DataFrame())
 
 # Fetch churn analysis data
 try:
@@ -1287,17 +1415,189 @@ def render_tab_content(selected_tab):
             html.P('Complete demographic overview of your customer base.',
                    style={'color': COLORS['text_secondary'], 'marginBottom': '30px', 'fontSize': '14px'}),
             
-            # Metric cards
+            # Target Customer Filters (MOVED TO TOP)
             html.Div([
-                create_metric_card('42.5', 'Average Age', COLORS['accent']),
-                create_metric_card('$78,400', 'Avg Income', COLORS['accent_light']),
-                create_metric_card('100', 'Total Profiles', '#ff8a65'),
-            ], style={'display': 'flex', 'marginBottom': '30px', 'marginLeft': '-10px', 'marginRight': '-10px'}),
+                html.H3('🎯 Target Customer Selection for Braze Marketing', 
+                       style={'color': COLORS['text'], 'marginBottom': '10px', 'fontSize': '20px', 'fontWeight': '600'}),
+                html.P([
+                    html.Span('Identify and segment customers for targeted marketing campaigns. ', style={'color': COLORS['text_secondary']}),
+                    html.Span('Apply filters to isolate your target audience for export to Braze.', 
+                             style={'color': COLORS['accent'], 'fontWeight': '600'})
+                ], style={'marginBottom': '20px', 'fontSize': '14px'}),
+                
+                # Filter Section
+                html.Div([
+                    html.H4('🔍 Filter Customers', 
+                           style={'color': COLORS['text'], 'marginBottom': '15px', 'fontSize': '16px', 'fontWeight': '600'}),
+                    
+                    # Filter Row 1: CLV Range Slider and VIP
+                    html.Div([
+                        html.Div([
+                            html.Label('Customer Lifetime Value (CLV) Range', style={'fontWeight': '600', 'marginBottom': '5px', 'display': 'block', 'fontSize': '13px'}),
+                            html.Div([
+                                dcc.RangeSlider(
+                                    id='filter-clv-range',
+                                    min=0,
+                                    max=2500,
+                                    step=50,
+                                    value=[0, 2500],
+                                    marks={
+                                        0: '$0',
+                                        500: '$500',
+                                        1000: '$1K',
+                                        1500: '$1.5K',
+                                        2000: '$2K',
+                                        2500: '$2.5K'
+                                    },
+                                    tooltip={"placement": "bottom", "always_visible": False},
+                                    className='orange-slider'
+                                )
+                            ], style={'paddingTop': '10px'})
+                        ], style={'flex': '1', 'marginRight': '20px'}),
+                        html.Div([
+                            html.Label('VIP Probability (Min)', style={'fontWeight': '600', 'marginBottom': '5px', 'display': 'block', 'fontSize': '13px'}),
+                            dcc.Dropdown(
+                                id='filter-vip-min',
+                                options=[
+                                    {'label': 'Any', 'value': ''},
+                                    {'label': '≥ 0.3 (Bronze)', 'value': 0.3},
+                                    {'label': '≥ 0.5 (Silver)', 'value': 0.5},
+                                    {'label': '≥ 0.7 (Gold)', 'value': 0.7},
+                                    {'label': '≥ 0.9 (Platinum)', 'value': 0.9}
+                                ],
+                                value='',
+                                clearable=True,
+                                style={'width': '100%'}
+                            )
+                        ], style={'flex': '1'})
+                    ], style={'display': 'flex', 'marginBottom': '25px', 'alignItems': 'flex-start'}),
+                    
+                    # Filter Row 2: Segment, Churn Risk, Country
+                    html.Div([
+                        html.Div([
+                            html.Label('Market Segment', style={'fontWeight': '600', 'marginBottom': '5px', 'display': 'block', 'fontSize': '13px'}),
+                            dcc.Dropdown(
+                                id='filter-segment',
+                                options=[
+                                    {
+                                        'label': f"{'🏛️' if s == 'Blue Chip' else '₿' if s == 'Crypto' else '🤝' if s == 'Social Impact' else '🌱'} {s}",
+                                        'value': s
+                                    } for s in filter_options['segments']
+                                ],
+                                placeholder='All Segments',
+                                clearable=True,
+                                style={'width': '100%'}
+                            )
+                        ], style={'flex': '1', 'marginRight': '10px'}),
+                        html.Div([
+                            html.Label('Churn Risk', style={'fontWeight': '600', 'marginBottom': '5px', 'display': 'block', 'fontSize': '13px'}),
+                            dcc.Dropdown(
+                                id='filter-churn-risk',
+                                options=[
+                                    {'label': 'All Customers', 'value': ''},
+                                    {'label': '🔴 At Risk', 'value': 1},
+                                    {'label': '🟢 Not at Risk', 'value': 0}
+                                ],
+                                value='',
+                                clearable=True,
+                                style={'width': '100%'}
+                            )
+                        ], style={'flex': '1', 'marginRight': '10px'}),
+                        html.Div([
+                            html.Label('Country', style={'fontWeight': '600', 'marginBottom': '5px', 'display': 'block', 'fontSize': '13px'}),
+                            dcc.Dropdown(
+                                id='filter-country',
+                                options=[{'label': c, 'value': c} for c in filter_options['countries']],
+                                placeholder='All Countries',
+                                clearable=True,
+                                style={'width': '100%'}
+                            )
+                        ], style={'flex': '1'})
+                    ], style={'display': 'flex', 'marginBottom': '15px'}),
+                    
+                    # Apply Filter Button
+                    html.Div([
+                        html.Button(
+                            '🔍 Apply Filters',
+                            id='apply-filters-btn',
+                            n_clicks=0,
+                            style={
+                                'backgroundColor': COLORS['accent'],
+                                'color': 'white',
+                                'border': 'none',
+                                'padding': '12px 30px',
+                                'borderRadius': '6px',
+                                'fontSize': '14px',
+                                'fontWeight': '600',
+                                'cursor': 'pointer',
+                                'boxShadow': '0 2px 4px rgba(0,0,0,0.1)'
+                            }
+                        ),
+                        html.Button(
+                            '🔄 Reset',
+                            id='reset-filters-btn',
+                            n_clicks=0,
+                            style={
+                                'backgroundColor': '#9e9e9e',
+                                'color': 'white',
+                                'border': 'none',
+                                'padding': '12px 30px',
+                                'borderRadius': '6px',
+                                'fontSize': '14px',
+                                'fontWeight': '600',
+                                'cursor': 'pointer',
+                                'marginLeft': '10px',
+                                'boxShadow': '0 2px 4px rgba(0,0,0,0.1)'
+                            }
+                        )
+                    ], style={'textAlign': 'center'})
+                ], style={
+                    'backgroundColor': '#fff8f0',
+                    'borderRadius': '6px',
+                    'padding': '20px',
+                    'marginBottom': '20px',
+                    'border': f'2px solid {COLORS["accent"]}'
+                }),
+                
+                # Results Count
+                html.Div(
+                    '👆 Click "Apply Filters" above to load customer data',
+                    id='filter-results-count',
+                    style={'marginBottom': '30px', 'fontSize': '14px', 'color': COLORS['text_secondary'], 'fontWeight': '600', 'textAlign': 'center'}
+                ),
+            ], style={
+                'backgroundColor': COLORS['card_background'],
+                'borderRadius': '8px',
+                'padding': '20px',
+                'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
+                'marginBottom': '30px'
+            }),
+            
+            # Metric cards (Dynamic with Loading)
+            dcc.Loading(
+                id="loading-metrics",
+                type="circle",
+                color=COLORS['accent'],
+                children=html.Div(
+                    id='c360-metric-cards',
+                    children=[
+                        create_metric_card('--', 'Average Age', COLORS['accent']),
+                        create_metric_card('--', 'Avg CLV', COLORS['accent_light']),
+                        create_metric_card('--', 'Total Profiles', '#ff8a65'),
+                    ],
+                    style={'display': 'flex', 'marginBottom': '30px', 'marginLeft': '-10px', 'marginRight': '-10px'}
+                )
+            ),
             
             # Demographics and Location Charts (Row 1)
             html.Div([
                 html.Div([
-                    dcc.Graph(figure=demo_fig)
+                    dcc.Loading(
+                        id="loading-age-dist",
+                        type="circle",
+                        color=COLORS['accent'],
+                        children=dcc.Graph(id='c360-age-distribution', figure=demo_fig)
+                    )
                 ], style={
                     'backgroundColor': COLORS['card_background'],
                     'borderRadius': '8px',
@@ -1307,7 +1607,12 @@ def render_tab_content(selected_tab):
                     'marginRight': '15px'
                 }),
                 html.Div([
-                    dcc.Graph(figure=location_fig)
+                    dcc.Loading(
+                        id="loading-location-dist",
+                        type="circle",
+                        color=COLORS['accent'],
+                        children=dcc.Graph(id='c360-location-distribution', figure=location_fig)
+                    )
                 ], style={
                     'backgroundColor': COLORS['card_background'],
                     'borderRadius': '8px',
@@ -1318,20 +1623,65 @@ def render_tab_content(selected_tab):
                 })
             ], style={'display': 'flex', 'marginBottom': '30px'}),
             
-            # Churn Features Table from Databricks (First 100 Rows)
+            # Customer Location Map
             html.Div([
-                html.H3('Customer Churn Features Dataset', 
+                html.H3('🗺️ Customer Locations Map', 
                        style={'color': COLORS['text'], 'marginBottom': '10px', 'fontSize': '20px', 'fontWeight': '600'}),
-                html.P([
-                    html.Span('Live data from Databricks SQL Warehouse - ', style={'color': COLORS['text_secondary']}),
-                    html.Span(f'Showing first 100 records' if not churn_features_df.empty else 'No data', 
-                             style={'color': COLORS['accent'], 'fontWeight': '600'})
-                ], style={'marginBottom': '20px', 'fontSize': '14px'}),
+                html.P('Interactive map showing customer locations. Hover over markers for details. Map updates with filters below.',
+                       style={'color': COLORS['text_secondary'], 'marginBottom': '20px', 'fontSize': '14px'}),
                 
-                dash_table.DataTable(
+                dcc.Loading(
+                    id="loading-map",
+                    type="circle",
+                    color=COLORS['accent'],
+                    children=dcc.Graph(
+                        id='customer-map',
+                        figure=initial_map_fig,
+                        config={'displayModeBar': True, 'displaylogo': False}
+                    )
+                )
+            ], style={
+                'backgroundColor': COLORS['card_background'],
+                'borderRadius': '8px',
+                'padding': '20px',
+                'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
+                'marginBottom': '30px'
+            }),
+            
+            # Customer Data Table
+            html.Div([
+                html.H3('📊 Filtered Customer Data', 
+                       style={'color': COLORS['text'], 'marginBottom': '20px', 'fontSize': '20px', 'fontWeight': '600'}),
+                
+                dcc.Loading(
+                    id="loading-table",
+                    type="circle",
+                    color=COLORS['accent'],
+                    children=dash_table.DataTable(
                     id='churn-features-table',
-                    columns=[{"name": i, "id": i} for i in churn_features_df.columns] if not churn_features_df.empty else [],
-                    data=churn_features_df.to_dict('records') if not churn_features_df.empty else [],
+                    columns=[
+                        {"name": "User ID", "id": "user_id"},
+                        {"name": "First Name", "id": "firstname"},
+                        {"name": "Last Name", "id": "lastname"},
+                        {"name": "Email", "id": "email"},
+                        {"name": "Churn Status", "id": "churn_status"},
+                        {"name": "CLV", "id": "customer_lifetime_value"},
+                        {"name": "VIP Probability", "id": "vip_customer_probability"},
+                        {"name": "Market Segment", "id": "market_segment"},
+                        {"name": "Country", "id": "country"},
+                        {"name": "Gender", "id": "gender"},
+                        {"name": "Age Group", "id": "age_group"},
+                        {"name": "Platform", "id": "platform"},
+                        {"name": "Order Count", "id": "order_count"},
+                        {"name": "Total Amount", "id": "total_amount"},
+                        {"name": "Session Count", "id": "session_count"},
+                        {"name": "Event Count", "id": "event_count"},
+                        {"name": "Days Since Creation", "id": "days_since_creation"},
+                        {"name": "Days Since Last Activity", "id": "days_since_last_activity"},
+                        {"name": "Latitude", "id": "lat"},
+                        {"name": "Longitude", "id": "lon"}
+                    ],
+                    data=[],
                     page_size=25,
                     page_action='native',
                     sort_action='native',
@@ -1349,6 +1699,28 @@ def render_tab_content(selected_tab):
                         'padding': '12px',
                         'border': f'1px solid {COLORS["accent_light"]}'
                     },
+                    style_header_conditional=[
+                        {
+                            'if': {'column_id': 'vip_customer_probability'},
+                            'backgroundColor': '#FFB400',
+                            'color': 'white'
+                        },
+                        {
+                            'if': {'column_id': 'market_segment'},
+                            'backgroundColor': '#00A6ED',
+                            'color': 'white'
+                        },
+                        {
+                            'if': {'column_id': 'customer_lifetime_value'},
+                            'backgroundColor': '#7FB800',
+                            'color': 'white'
+                        },
+                        {
+                            'if': {'column_id': 'churn_status'},
+                            'backgroundColor': '#0D2C54',
+                            'color': 'white'
+                        }
+                    ],
                     style_cell={
                         'textAlign': 'left',
                         'padding': '12px',
@@ -1369,27 +1741,51 @@ def render_tab_content(selected_tab):
                             'if': {'row_index': 'odd'},
                             'backgroundColor': '#f9f9f9'
                         },
+                        # Churn Status Column - Red/Green based on risk
                         {
-                            'if': {'column_id': 'churn', 'filter_query': '{churn} = 1'},
+                            'if': {'column_id': 'churn_status', 'filter_query': '{churn_status} = "At Risk"'},
                             'backgroundColor': '#ffe6e6',
                             'color': '#cc0000',
                             'fontWeight': '600'
+                        },
+                        {
+                            'if': {'column_id': 'churn_status', 'filter_query': '{churn_status} = "Not at Risk"'},
+                            'backgroundColor': '#e8f5e9',
+                            'color': '#2e7d32',
+                            'fontWeight': '600'
+                        },
+                        # VIP Probability Column - Gold/Yellow
+                        {
+                            'if': {'column_id': 'vip_customer_probability'},
+                            'backgroundColor': '#fff8e1',
+                            'color': '#f57c00',
+                            'fontWeight': '600',
+                            'border': '1px solid #FFB400'
+                        },
+                        # Market Segment Column - Blue
+                        {
+                            'if': {'column_id': 'market_segment'},
+                            'backgroundColor': '#e3f2fd',
+                            'color': '#0D2C54',
+                            'fontWeight': '600',
+                            'border': '1px solid #00A6ED'
+                        },
+                        # Customer Lifetime Value Column - Green
+                        {
+                            'if': {'column_id': 'customer_lifetime_value'},
+                            'backgroundColor': '#f1f8e9',
+                            'color': '#558b2f',
+                            'fontWeight': '600',
+                            'border': '1px solid #7FB800'
                         }
                     ],
                     style_filter={
                         'backgroundColor': '#fff8f0',
                         'border': f'1px solid {COLORS["accent"]}'
                     },
-                    tooltip_data=[
-                        {
-                            column: {'value': str(value), 'type': 'markdown'}
-                            for column, value in row.items()
-                        } for row in churn_features_df.to_dict('records')
-                    ] if not churn_features_df.empty else [],
+                    tooltip_data=[],
                     tooltip_duration=None
-                ) if not churn_features_df.empty else html.P(
-                    'No data available. Check Databricks connection.',
-                    style={'color': COLORS['text_secondary'], 'fontStyle': 'italic'}
+                    )
                 )
             ], style={
                 'backgroundColor': COLORS['card_background'],
@@ -1657,6 +2053,256 @@ def update_churn_visualizations(filter_value):
     new_engagement_fig = create_engagement_fig(filtered_engagement)
     
     return new_risk_fig, new_timeline_fig, new_country_fig, new_platform_fig, new_age_fig, new_engagement_fig
+
+
+# Callback to filter Customer 360 table, map, metrics, and demographics
+@callback(
+    [
+        Output('customer-map', 'figure'),
+        Output('churn-features-table', 'data'),
+        Output('churn-features-table', 'columns'),
+        Output('filter-results-count', 'children'),
+        Output('filter-clv-range', 'value'),
+        Output('filter-vip-min', 'value'),
+        Output('filter-segment', 'value'),
+        Output('filter-churn-risk', 'value'),
+        Output('filter-country', 'value'),
+        Output('c360-metric-cards', 'children'),
+        Output('c360-age-distribution', 'figure'),
+        Output('c360-location-distribution', 'figure')
+    ],
+    [
+        Input('apply-filters-btn', 'n_clicks'),
+        Input('reset-filters-btn', 'n_clicks')
+    ],
+    [
+        State('filter-clv-range', 'value'),
+        State('filter-vip-min', 'value'),
+        State('filter-segment', 'value'),
+        State('filter-churn-risk', 'value'),
+        State('filter-country', 'value')
+    ],
+    prevent_initial_call=True
+)
+def update_customer_table(apply_clicks, reset_clicks, clv_range, vip_min, segment, churn_risk, country):
+    """Update the customer table, map, metrics, and demographics based on filter selections."""
+    
+    # Determine which button was clicked
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        raise dash.exceptions.PreventUpdate
+    
+    button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+    
+    # Define standard column structure (matching SQL SELECT order and layout)
+    standard_columns = [
+        {"name": "User ID", "id": "user_id"},
+        {"name": "First Name", "id": "firstname"},
+        {"name": "Last Name", "id": "lastname"},
+        {"name": "Email", "id": "email"},
+        {"name": "Churn Status", "id": "churn_status"},
+        {"name": "CLV", "id": "customer_lifetime_value"},
+        {"name": "VIP Probability", "id": "vip_customer_probability"},
+        {"name": "Market Segment", "id": "market_segment"},
+        {"name": "Country", "id": "country"},
+        {"name": "Gender", "id": "gender"},
+        {"name": "Age Group", "id": "age_group"},
+        {"name": "Platform", "id": "platform"},
+        {"name": "Order Count", "id": "order_count"},
+        {"name": "Total Amount", "id": "total_amount"},
+        {"name": "Session Count", "id": "session_count"},
+        {"name": "Event Count", "id": "event_count"},
+        {"name": "Days Since Creation", "id": "days_since_creation"},
+        {"name": "Days Since Last Activity", "id": "days_since_last_activity"},
+        {"name": "Latitude", "id": "lat"},
+        {"name": "Longitude", "id": "lon"}
+    ]
+    
+    # Helper function to create age distribution figure
+    def create_age_dist_figure(age_gender_df):
+        """Create age distribution histogram by gender."""
+        if age_gender_df.empty:
+            return go.Figure()
+        
+        fig = px.histogram(
+            age_gender_df,
+            x='age',
+            color='gender',
+            title='Customer Age Distribution by Gender',
+            labels={'age': 'Age', 'count': 'Number of Customers'},
+            color_discrete_sequence=[COLORS['accent'], COLORS['accent_light'], '#ff8a65']
+        )
+        fig.update_layout(
+            template='plotly_white',
+            paper_bgcolor=COLORS['card_background'],
+            plot_bgcolor=COLORS['card_background'],
+            font={'color': COLORS['text']},
+            height=400,
+            margin=dict(t=40, b=20, l=20, r=20)
+        )
+        return fig
+    
+    # Helper function to create location distribution figure
+    def create_location_dist_figure(customer_df):
+        """Create bar chart for customer distribution by country."""
+        if customer_df.empty or 'country' not in customer_df.columns:
+            return go.Figure()
+        
+        country_distribution = customer_df['country'].value_counts().reset_index()
+        country_distribution.columns = ['country', 'customer_count']
+        
+        fig = px.bar(
+            country_distribution,
+            x='country',
+            y='customer_count',
+            title='Customer Distribution by Location',
+            labels={'customer_count': 'Number of Customers', 'country': 'Country'},
+            text='customer_count'
+        )
+        fig.update_traces(
+            marker_color=COLORS['accent'],
+            textposition='outside'
+        )
+        fig.update_layout(
+            template='plotly_white',
+            paper_bgcolor=COLORS['card_background'],
+            plot_bgcolor=COLORS['card_background'],
+            font={'color': COLORS['text']},
+            height=400,
+            margin=dict(t=40, b=60, l=60, r=20),
+            xaxis={'tickangle': -30}
+        )
+        return fig
+    
+    # If reset button clicked, clear all filters and show default data
+    if button_id == 'reset-filters-btn':
+        # Get all data
+        default_df = c360_service.get_churn_features(limit=10000)
+        stats_df = c360_service.get_customer_statistics()
+        age_gender_df = c360_service.get_age_gender_distribution()
+        
+        # Create map and table data
+        map_fig = create_customer_map(default_df)
+        data = default_df.to_dict('records') if not default_df.empty else []
+        count_msg = f"Showing all {len(default_df)} records (filters reset)" if not default_df.empty else "No data available"
+        
+        # Create metric cards
+        if not stats_df.empty:
+            stats = stats_df.iloc[0]
+            metric_cards = [
+                create_metric_card(f"{stats['avg_age']:.1f}", 'Average Age', COLORS['accent']),
+                create_metric_card(f"${stats['avg_clv']:,.0f}", 'Avg CLV', COLORS['accent_light']),
+                create_metric_card(f"{stats['total_profiles']:,}", 'Total Profiles', '#ff8a65'),
+            ]
+        else:
+            metric_cards = [
+                create_metric_card('--', 'Average Age', COLORS['accent']),
+                create_metric_card('--', 'Avg CLV', COLORS['accent_light']),
+                create_metric_card('--', 'Total Profiles', '#ff8a65'),
+            ]
+        
+        # Create age distribution figure
+        age_dist_fig = create_age_dist_figure(age_gender_df)
+        
+        # Create location distribution figure
+        location_dist_fig = create_location_dist_figure(default_df)
+        
+        return map_fig, data, standard_columns, count_msg, [0, 2500], '', None, '', None, metric_cards, age_dist_fig, location_dist_fig
+    
+    # Apply filters
+    try:
+        # Extract CLV min and max from range slider
+        clv_min_val = clv_range[0] if clv_range and len(clv_range) == 2 else None
+        clv_max_val = clv_range[1] if clv_range and len(clv_range) == 2 else None
+        
+        # Convert empty string or None to actual None for optional filters
+        vip_min_val = vip_min if vip_min and vip_min != '' else None
+        segment_val = segment if segment else None
+        churn_risk_val = churn_risk if churn_risk != '' else None
+        country_val = country if country else None
+        
+        # Fetch filtered data
+        filtered_df = c360_service.get_filtered_customer_data(
+            clv_min=clv_min_val,
+            clv_max=clv_max_val,
+            vip_min=vip_min_val,
+            market_segment=segment_val,
+            churn_risk=churn_risk_val,
+            country=country_val,
+            limit=10000
+        )
+        
+        # Fetch statistics with same filters
+        stats_df = c360_service.get_customer_statistics(
+            clv_min=clv_min_val,
+            clv_max=clv_max_val,
+            vip_min=vip_min_val,
+            market_segment=segment_val,
+            churn_risk=churn_risk_val,
+            country=country_val
+        )
+        
+        # Fetch age/gender distribution with same filters
+        age_gender_df = c360_service.get_age_gender_distribution(
+            clv_min=clv_min_val,
+            clv_max=clv_max_val,
+            vip_min=vip_min_val,
+            market_segment=segment_val,
+            churn_risk=churn_risk_val,
+            country=country_val
+        )
+        
+        if filtered_df.empty:
+            empty_map = create_customer_map(pd.DataFrame())
+            empty_metric_cards = [
+                create_metric_card('--', 'Average Age', COLORS['accent']),
+                create_metric_card('--', 'Avg CLV', COLORS['accent_light']),
+                create_metric_card('0', 'Total Profiles', '#ff8a65'),
+            ]
+            empty_age_fig = create_age_dist_figure(pd.DataFrame())
+            empty_location_fig = create_location_dist_figure(pd.DataFrame())
+            return empty_map, [], standard_columns, "⚠️ No customers match your filter criteria. Try adjusting the filters.", clv_range, vip_min, segment, churn_risk, country, empty_metric_cards, empty_age_fig, empty_location_fig
+        
+        # Create map with filtered data
+        map_fig = create_customer_map(filtered_df)
+        data = filtered_df.to_dict('records')
+        count_msg = f"✅ Found {len(filtered_df)} customers matching your criteria"
+        
+        # Create metric cards from statistics
+        if not stats_df.empty:
+            stats = stats_df.iloc[0]
+            metric_cards = [
+                create_metric_card(f"{stats['avg_age']:.1f}", 'Average Age', COLORS['accent']),
+                create_metric_card(f"${stats['avg_clv']:,.0f}", 'Avg CLV', COLORS['accent_light']),
+                create_metric_card(f"{stats['total_profiles']:,}", 'Total Profiles', '#ff8a65'),
+            ]
+        else:
+            metric_cards = [
+                create_metric_card('--', 'Average Age', COLORS['accent']),
+                create_metric_card('--', 'Avg CLV', COLORS['accent_light']),
+                create_metric_card('--', 'Total Profiles', '#ff8a65'),
+            ]
+        
+        # Create age distribution figure
+        age_dist_fig = create_age_dist_figure(age_gender_df)
+        
+        # Create location distribution figure
+        location_dist_fig = create_location_dist_figure(filtered_df)
+        
+        return map_fig, data, standard_columns, count_msg, clv_range, vip_min, segment, churn_risk, country, metric_cards, age_dist_fig, location_dist_fig
+        
+    except Exception as e:
+        print(f"Error filtering customer data: {e}")
+        error_msg = f"❌ Error applying filters: {str(e)}"
+        error_map = create_customer_map(pd.DataFrame())
+        error_metric_cards = [
+            create_metric_card('--', 'Average Age', COLORS['accent']),
+            create_metric_card('--', 'Avg CLV', COLORS['accent_light']),
+            create_metric_card('--', 'Total Profiles', '#ff8a65'),
+        ]
+        error_age_fig = create_age_dist_figure(pd.DataFrame())
+        error_location_fig = create_location_dist_figure(pd.DataFrame())
+        return error_map, [], standard_columns, error_msg, clv_range, vip_min, segment, churn_risk, country, error_metric_cards, error_age_fig, error_location_fig
 
 
 # Run the app

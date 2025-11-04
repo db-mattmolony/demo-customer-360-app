@@ -26,13 +26,13 @@ def create_vip_tier_distribution_fig(vip_tiers_df):
     if vip_tiers_df.empty:
         return go.Figure()
     
-    # Define color gradient for VIP tiers (orange gradient like CLV segments)
+    # Define orange gradient for VIP tiers (warm orange shades)
     vip_colors = {
-        'Platinum VIP': '#d84315',          # Darkest orange
-        'Gold VIP': '#ff5722',              # Dark orange
-        'Silver VIP': '#ff7043',            # Medium orange
-        'Bronze VIP': '#ff8a65',            # Light orange
-        'Standard': '#ffab91'               # Lightest orange
+        'Platinum VIP': '#e65100',          # Deep orange
+        'Gold VIP': '#ff6f00',              # Vibrant orange
+        'Silver VIP': '#ff8f00',            # Medium-bright orange
+        'Bronze VIP': '#ffa726',            # Light orange
+        'Standard': '#ffcc80'               # Lightest orange
     }
     
     fig = px.pie(
