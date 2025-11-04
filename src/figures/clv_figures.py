@@ -130,8 +130,7 @@ def create_clv_vs_spending_scatter(behavioral_df):
         y='customer_lifetime_value',
         title=f'CLV vs Historical Spending (Correlation: {corr:.3f})',
         labels={'total_amount': 'Historical Spending ($)', 'customer_lifetime_value': 'Predicted CLV ($)'},
-        opacity=0.6,
-        trendline='ols'
+        opacity=0.6
     )
     fig.update_traces(marker=dict(color=COLORS['accent'], size=5))
     fig.update_layout(**CHART_LAYOUT_DEFAULTS)
@@ -139,23 +138,21 @@ def create_clv_vs_spending_scatter(behavioral_df):
 
 
 def create_clv_vs_orders_scatter(behavioral_df):
-    """Create scatter plot for CLV vs order count correlation."""
+    """Create box plot for CLV distribution by order count."""
     if behavioral_df.empty:
         return go.Figure()
     
     # Calculate correlation
     corr = behavioral_df['customer_lifetime_value'].corr(behavioral_df['order_count'])
     
-    fig = px.scatter(
+    fig = px.box(
         behavioral_df,
         x='order_count',
         y='customer_lifetime_value',
-        title=f'CLV vs Order Count (Correlation: {corr:.3f})',
-        labels={'order_count': 'Number of Orders', 'customer_lifetime_value': 'Predicted CLV ($)'},
-        opacity=0.6,
-        trendline='ols'
+        title=f'CLV Distribution by Order Count (Correlation: {corr:.3f})',
+        labels={'order_count': 'Number of Orders', 'customer_lifetime_value': 'Predicted CLV ($)'}
     )
-    fig.update_traces(marker=dict(color=COLORS['accent'], size=5))
+    fig.update_traces(marker_color=COLORS['accent'], line_color=COLORS['accent'])
     fig.update_layout(**CHART_LAYOUT_DEFAULTS)
     return fig
 
@@ -210,17 +207,15 @@ def create_clv_segment_value_fig(clv_segments_df):
         y='total_clv_value',
         title='Total CLV Value by Customer Segment',
         labels={'total_clv_value': 'Total CLV Value ($)', 'clv_segment': 'CLV Segment'},
-        text='total_clv_value',
-        color='avg_clv',
-        color_continuous_scale='Oranges'
+        text='total_clv_value'
     )
     fig.update_traces(
+        marker_color=COLORS['accent'],
         texttemplate='$%{text:,.0f}',
         textposition='outside'
     )
     fig.update_layout(
         **CHART_LAYOUT_DEFAULTS,
-        xaxis={'tickangle': -30},
-        showlegend=False
+        xaxis={'tickangle': -30}
     )
     return fig

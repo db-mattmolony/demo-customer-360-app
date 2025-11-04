@@ -11,6 +11,9 @@ import numpy as np
 from services.C360Service import get_c360_service
 from services.CustomerChurnService import get_churn_service
 from services.CLVService import get_clv_service
+from services.SegmentationService import get_segmentation_service
+from services.VIPService import get_vip_service
+from segment_profiles import SEGMENT_PROFILES
 
 # Initialize the Dash app
 app = Dash(__name__, assets_folder='assets')
@@ -30,6 +33,8 @@ COLORS = {
 c360_service = get_c360_service()
 churn_service = get_churn_service()
 clv_service = get_clv_service()
+segmentation_service = get_segmentation_service()
+vip_service = get_vip_service()
 
 # Fetch churn features data from Databricks (limited to 100 rows for C360 tab)
 try:
@@ -84,6 +89,34 @@ except Exception as e:
     top_clv_customers_df = pd.DataFrame()
     clv_segment_behavior_df = pd.DataFrame()
 
+# Fetch Segmentation analysis data (lightweight overview only on initial load)
+try:
+    segment_overview_df = segmentation_service.get_segment_overview()
+except Exception as e:
+    print(f"Error loading segmentation overview: {e}")
+    segment_overview_df = pd.DataFrame()
+
+# Note: Heavy queries (behavioral analysis) are loaded lazily when segmentation tab is viewed
+
+# Fetch VIP customer analysis data
+try:
+    vip_overview_df = vip_service.get_vip_overview()
+    vip_tiers_df = vip_service.get_vip_tiers()
+    vip_by_segment_df = vip_service.get_vip_by_market_segment()
+    vip_by_country_df = vip_service.get_vip_by_country()
+    top_vip_customers_df = vip_service.get_top_vip_customers(limit=20)
+    vip_clv_correlation_df = vip_service.get_vip_clv_correlation()
+    vip_behavioral_df = vip_service.get_vip_behavioral_metrics()
+except Exception as e:
+    print(f"Error loading VIP data: {e}")
+    vip_overview_df = pd.DataFrame()
+    vip_tiers_df = pd.DataFrame()
+    vip_by_segment_df = pd.DataFrame()
+    vip_by_country_df = pd.DataFrame()
+    top_vip_customers_df = pd.DataFrame()
+    vip_clv_correlation_df = pd.DataFrame()
+    vip_behavioral_df = pd.DataFrame()
+
 # Sample data generation
 np.random.seed(42)
 
@@ -108,6 +141,17 @@ from figures.clv_figures import (
     create_clv_segment_value_fig
 )
 
+# VIP figures
+from figures.vip_figures import (
+    create_vip_tier_distribution_fig,
+    create_vip_clv_by_tier_fig,
+    create_vip_by_segment_fig,
+    create_vip_by_country_fig,
+    create_vip_clv_correlation_fig,
+    create_vip_behavioral_comparison_fig,
+    create_vip_value_concentration_fig
+)
+
 # Create CLV figures
 clv_distribution_fig = create_clv_distribution_fig(clv_segments_df)
 clv_market_fig = create_clv_by_market_segment_fig(clv_by_market_df)
@@ -117,6 +161,15 @@ clv_spending_scatter = create_clv_vs_spending_scatter(clv_behavioral_df)
 clv_orders_scatter = create_clv_vs_orders_scatter(clv_behavioral_df)
 segment_behavior_fig = create_segment_behavior_fig(clv_segment_behavior_df)
 clv_value_fig = create_clv_segment_value_fig(clv_segments_df)
+
+# Create VIP figures
+vip_tier_dist_fig = create_vip_tier_distribution_fig(vip_tiers_df)
+vip_clv_tier_fig = create_vip_clv_by_tier_fig(vip_tiers_df)
+vip_segment_fig = create_vip_by_segment_fig(vip_by_segment_df)
+vip_country_fig = create_vip_by_country_fig(vip_by_country_df)
+vip_correlation_fig = create_vip_clv_correlation_fig(vip_clv_correlation_df)
+vip_behavioral_fig = create_vip_behavioral_comparison_fig(vip_behavioral_df)
+vip_value_fig = create_vip_value_concentration_fig(vip_tiers_df)
 
 # VIP customers data
 vip_data = pd.DataFrame({
@@ -843,22 +896,159 @@ def render_tab_content(selected_tab):
         ])
     
     elif selected_tab == 'vip':
+        # Calculate metrics from VIP overview
+        total_vip = vip_overview_df['medium_high_vip_count'].iloc[0] if not vip_overview_df.empty else 0
+        high_vip = vip_overview_df['high_vip_count'].iloc[0] if not vip_overview_df.empty else 0
+        avg_vip_clv = vip_overview_df['avg_clv_high_vip'].iloc[0] if not vip_overview_df.empty else 0
+        total_vip_value = vip_overview_df['total_vip_value'].iloc[0] if not vip_overview_df.empty else 0
+        
         return html.Div([
-            html.H2('VIP Customers', 
+            # Header
+            html.H2('VIP Customer Analysis', 
                    style={'color': COLORS['text'], 'marginBottom': '10px', 'fontSize': '24px', 'fontWeight': '600'}),
-            html.P('Track your most valuable customers and their engagement patterns.',
+            html.P('Track your most valuable customers and their contribution to business growth.',
                    style={'color': COLORS['text_secondary'], 'marginBottom': '30px', 'fontSize': '14px'}),
             
-            # Metric cards
+            # Key Metrics Row
             html.Div([
-                create_metric_card('20', 'VIP Customers', COLORS['accent']),
-                create_metric_card('$28,500', 'Avg VIP Spend', COLORS['accent_light']),
-                create_metric_card('8.5 years', 'Avg Membership', '#ff8a65'),
+                create_metric_card(f'{total_vip:,}' if total_vip else '0', 'VIP Customers (≥0.5)', COLORS['accent']),
+                create_metric_card(f'{high_vip:,}' if high_vip else '0', 'High VIP (≥0.7)', '#FFD700'),
+                create_metric_card(f'${avg_vip_clv:,.0f}' if avg_vip_clv else '$0', 'Avg VIP CLV', COLORS['accent_light']),
+                create_metric_card(f'${total_vip_value:,.0f}' if total_vip_value else '$0', 'Total VIP Value', '#ff8a65'),
             ], style={'display': 'flex', 'marginBottom': '30px', 'marginLeft': '-10px', 'marginRight': '-10px'}),
             
-            # Chart
+            # VIP Tier Distribution and CLV by Tier (Row 1)
             html.Div([
-                dcc.Graph(figure=vip_fig)
+                html.Div([
+                    dcc.Graph(figure=vip_tier_dist_fig)
+                ], style={
+                    'backgroundColor': COLORS['card_background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
+                    'flex': '1',
+                    'marginRight': '15px'
+                }),
+                html.Div([
+                    dcc.Graph(figure=vip_clv_tier_fig)
+                ], style={
+                    'backgroundColor': COLORS['card_background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
+                    'flex': '1',
+                    'marginLeft': '15px'
+                })
+            ], style={'display': 'flex', 'marginBottom': '30px'}),
+            
+            # VIP by Segment and Country (Row 2)
+            html.Div([
+                html.Div([
+                    dcc.Graph(figure=vip_segment_fig)
+                ], style={
+                    'backgroundColor': COLORS['card_background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
+                    'flex': '1',
+                    'marginRight': '15px'
+                }),
+                html.Div([
+                    dcc.Graph(figure=vip_country_fig)
+                ], style={
+                    'backgroundColor': COLORS['card_background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
+                    'flex': '1',
+                    'marginLeft': '15px'
+                })
+            ], style={'display': 'flex', 'marginBottom': '30px'}),
+            
+            # VIP Correlation and Behavioral Comparison (Row 3)
+            html.Div([
+                html.Div([
+                    dcc.Graph(figure=vip_correlation_fig)
+                ], style={
+                    'backgroundColor': COLORS['card_background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
+                    'flex': '1',
+                    'marginRight': '15px'
+                }),
+                html.Div([
+                    dcc.Graph(figure=vip_behavioral_fig)
+                ], style={
+                    'backgroundColor': COLORS['card_background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
+                    'flex': '1',
+                    'marginLeft': '15px'
+                })
+            ], style={'display': 'flex', 'marginBottom': '30px'}),
+            
+            # VIP Value Concentration (Full Width)
+            html.Div([
+                dcc.Graph(figure=vip_value_fig)
+            ], style={
+                'backgroundColor': COLORS['card_background'],
+                'borderRadius': '8px',
+                'padding': '20px',
+                'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
+                'marginBottom': '30px'
+            }),
+            
+            # Top 20 VIP Customers Table
+            html.Div([
+                html.H3('Top 20 VIP Customers', 
+                       style={'color': COLORS['text'], 'marginBottom': '15px', 'fontSize': '20px', 'fontWeight': '600'}),
+                html.P('Highest VIP probability customers sorted by value',
+                       style={'color': COLORS['text_secondary'], 'marginBottom': '20px', 'fontSize': '14px'}),
+                
+                dash_table.DataTable(
+                    id='top-vip-table',
+                    columns=[{"name": i, "id": i} for i in top_vip_customers_df.columns] if not top_vip_customers_df.empty else [],
+                    data=top_vip_customers_df.to_dict('records') if not top_vip_customers_df.empty else [],
+                    page_size=20,
+                    style_table={
+                        'overflowX': 'auto'
+                    },
+                    style_header={
+                        'backgroundColor': COLORS['accent'],  # Orange for consistency
+                        'color': 'white',
+                        'fontWeight': 'bold',
+                        'textAlign': 'left',
+                        'padding': '12px'
+                    },
+                    style_cell={
+                        'textAlign': 'left',
+                        'padding': '12px',
+                        'fontSize': '13px',
+                        'fontFamily': '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif'
+                    },
+                    style_data={
+                        'backgroundColor': COLORS['card_background'],
+                        'color': COLORS['text'],
+                        'border': f'1px solid {COLORS["border"]}'
+                    },
+                    style_data_conditional=[
+                        {
+                            'if': {'row_index': 'odd'},
+                            'backgroundColor': '#f9f9f9'
+                        },
+                        {
+                            'if': {'column_id': 'vip_probability', 'filter_query': '{vip_probability} >= 0.7'},
+                            'backgroundColor': '#fff9e6',
+                            'color': '#ff8c00',
+                            'fontWeight': '600'
+                        }
+                    ]
+                ) if not top_vip_customers_df.empty else html.P(
+                    'No VIP customer data available.',
+                    style={'color': COLORS['text_secondary'], 'fontStyle': 'italic'}
+                )
             ], style={
                 'backgroundColor': COLORS['card_background'],
                 'borderRadius': '8px',
@@ -868,43 +1058,229 @@ def render_tab_content(selected_tab):
         ])
     
     elif selected_tab == 'segmentation':
+        # Lazy load behavioral analysis (only when this tab is viewed)
+        # Using ULTRA-FAST version with sampling for instant results
+        try:
+            # Option 1: ULTRA-FAST with fixed limit (recommended for large datasets)
+            segment_behavioral_df = segmentation_service.get_segment_behavioral_analysis_fast()
+            
+            # Option 2: Fast with statistical sampling (uncomment to use)
+            # segment_behavioral_df = segmentation_service.get_segment_behavioral_analysis(use_sampling=True, sample_fraction=0.1)
+            
+            # Option 3: Full accuracy, slower (uncomment to use)
+            # segment_behavioral_df = segmentation_service.get_segment_behavioral_analysis(use_sampling=False)
+        except Exception as e:
+            print(f"Error loading segmentation behavioral data: {e}")
+            segment_behavioral_df = pd.DataFrame()
+        
+        # Helper function to create segment profile card
+        def create_segment_card(segment_name, segment_data):
+            profile = SEGMENT_PROFILES.get(segment_name, {})
+            
+            # Get metrics from segment_overview_df
+            segment_metrics = segment_overview_df[segment_overview_df['market_segment'] == segment_name]
+            customer_count = segment_metrics['customer_count'].iloc[0] if not segment_metrics.empty else 0
+            avg_clv = segment_metrics['avg_clv'].iloc[0] if not segment_metrics.empty else 0
+            total_clv = segment_metrics['total_clv'].iloc[0] if not segment_metrics.empty else 0
+            avg_vip_prob = segment_metrics['avg_vip_probability'].iloc[0] if not segment_metrics.empty else 0
+            
+            # Get behavioral metrics from segment_behavioral_df
+            behavioral_metrics = segment_behavioral_df[segment_behavioral_df['market_segment'] == segment_name]
+            avg_spending = behavioral_metrics['avg_spending'].iloc[0] if not behavioral_metrics.empty else 0
+            avg_orders = behavioral_metrics['avg_orders'].iloc[0] if not behavioral_metrics.empty else 0
+            avg_order_value = behavioral_metrics['avg_order_value'].iloc[0] if not behavioral_metrics.empty else 0
+            avg_sessions = behavioral_metrics['avg_sessions'].iloc[0] if not behavioral_metrics.empty else 0
+            avg_engagement = behavioral_metrics['avg_engagement_ratio'].iloc[0] if not behavioral_metrics.empty else 0
+            retention_rate = behavioral_metrics['retention_rate_pct'].iloc[0] if not behavioral_metrics.empty else 0
+            avg_tenure = behavioral_metrics['avg_tenure_days'].iloc[0] if not behavioral_metrics.empty else 0
+            avg_inactive = behavioral_metrics['avg_days_inactive'].iloc[0] if not behavioral_metrics.empty else 0
+            
+            # Calculate segment percentage
+            total_customers = segment_overview_df['customer_count'].sum() if not segment_overview_df.empty else 1
+            segment_pct = (customer_count / total_customers * 100) if total_customers > 0 else 0
+            
+            return html.Div([
+                # Header with icon and tagline
+                html.Div([
+                    html.Span(profile.get('icon', ''), style={'fontSize': '48px', 'marginRight': '15px'}),
+                    html.Div([
+                        html.H3(segment_name, style={'color': COLORS['text'], 'marginBottom': '5px', 'fontSize': '24px', 'fontWeight': '700'}),
+                        html.P(profile.get('tagline', ''), style={'color': COLORS['accent'], 'marginBottom': '0px', 'fontSize': '14px', 'fontWeight': '600', 'textTransform': 'uppercase', 'letterSpacing': '0.5px'}),
+                    ])
+                ], style={'display': 'flex', 'alignItems': 'center', 'marginBottom': '20px'}),
+                
+                # Description
+                html.P(profile.get('description', ''), style={
+                    'color': COLORS['text_secondary'], 
+                    'marginBottom': '20px', 
+                    'fontSize': '14px', 
+                    'lineHeight': '1.8'
+                }),
+                
+                # Key Metrics Row (4 metrics)
+                html.Div([
+                    html.Div([
+                        html.H4(f'{customer_count:,}', style={'color': COLORS['accent'], 'fontSize': '20px', 'fontWeight': '700', 'marginBottom': '5px'}),
+                        html.P(f'Customers ({segment_pct:.1f}%)', style={'color': COLORS['text_secondary'], 'fontSize': '11px', 'marginBottom': '0px'}),
+                    ], style={'flex': '1', 'textAlign': 'center', 'padding': '12px', 'backgroundColor': '#fafafa', 'borderRadius': '8px', 'marginRight': '8px'}),
+                    html.Div([
+                        html.H4(f'${avg_clv:,.0f}', style={'color': COLORS['accent'], 'fontSize': '20px', 'fontWeight': '700', 'marginBottom': '5px'}),
+                        html.P('Avg CLV', style={'color': COLORS['text_secondary'], 'fontSize': '11px', 'marginBottom': '0px'}),
+                    ], style={'flex': '1', 'textAlign': 'center', 'padding': '12px', 'backgroundColor': '#fafafa', 'borderRadius': '8px', 'marginRight': '8px'}),
+                    html.Div([
+                        html.H4(f'{retention_rate:.1f}%', style={'color': COLORS['accent'], 'fontSize': '20px', 'fontWeight': '700', 'marginBottom': '5px'}),
+                        html.P('Retention', style={'color': COLORS['text_secondary'], 'fontSize': '11px', 'marginBottom': '0px'}),
+                    ], style={'flex': '1', 'textAlign': 'center', 'padding': '12px', 'backgroundColor': '#fafafa', 'borderRadius': '8px', 'marginRight': '8px'}),
+                    html.Div([
+                        html.H4(f'{avg_vip_prob:.1%}', style={'color': COLORS['accent'], 'fontSize': '20px', 'fontWeight': '700', 'marginBottom': '5px'}),
+                        html.P('VIP Rate', style={'color': COLORS['text_secondary'], 'fontSize': '11px', 'marginBottom': '0px'}),
+                    ], style={'flex': '1', 'textAlign': 'center', 'padding': '12px', 'backgroundColor': '#fafafa', 'borderRadius': '8px'}),
+                ], style={'display': 'flex', 'marginBottom': '25px'}),
+                
+                # Behavioral Insights Section
+                html.Div([
+                    html.H4('📊 Behavioral Analysis', style={'color': COLORS['text'], 'marginBottom': '15px', 'fontSize': '16px', 'fontWeight': '600'}),
+                    html.Div([
+                        # Column 1: Spending Behavior
+                        html.Div([
+                            html.P('💰 Spending Behavior', style={'fontWeight': '600', 'color': COLORS['accent'], 'marginBottom': '10px', 'fontSize': '13px'}),
+                            html.P(f'Avg Total Spending: ${avg_spending:,.2f}', style={'marginBottom': '6px', 'color': COLORS['text'], 'fontSize': '12px'}),
+                            html.P(f'Avg Orders: {avg_orders:.1f}', style={'marginBottom': '6px', 'color': COLORS['text'], 'fontSize': '12px'}),
+                            html.P(f'Avg Order Value: ${avg_order_value:,.2f}', style={'marginBottom': '0px', 'color': COLORS['text'], 'fontSize': '12px'}),
+                        ], style={'flex': '1', 'marginRight': '20px'}),
+                        
+                        # Column 2: Engagement
+                        html.Div([
+                            html.P('📱 Engagement', style={'fontWeight': '600', 'color': COLORS['accent'], 'marginBottom': '10px', 'fontSize': '13px'}),
+                            html.P(f'Avg Sessions: {avg_sessions:.1f}', style={'marginBottom': '6px', 'color': COLORS['text'], 'fontSize': '12px'}),
+                            html.P(f'Engagement Ratio: {avg_engagement:.2f}', style={'marginBottom': '6px', 'color': COLORS['text'], 'fontSize': '12px'}),
+                            html.P(f'Retention Rate: {retention_rate:.1f}%', style={'marginBottom': '0px', 'color': COLORS['text'], 'fontSize': '12px'}),
+                        ], style={'flex': '1', 'marginRight': '20px'}),
+                        
+                        # Column 3: Activity
+                        html.Div([
+                            html.P('⏱️ Activity Patterns', style={'fontWeight': '600', 'color': COLORS['accent'], 'marginBottom': '10px', 'fontSize': '13px'}),
+                            html.P(f'Avg Tenure: {avg_tenure:.0f} days', style={'marginBottom': '6px', 'color': COLORS['text'], 'fontSize': '12px'}),
+                            html.P(f'Avg Days Inactive: {avg_inactive:.1f}', style={'marginBottom': '6px', 'color': COLORS['text'], 'fontSize': '12px'}),
+                            html.P(f'Total Value: ${total_clv:,.0f}', style={'marginBottom': '0px', 'color': COLORS['text'], 'fontSize': '12px'}),
+                        ], style={'flex': '1'}),
+                    ], style={'display': 'flex', 'backgroundColor': '#f9f9f9', 'padding': '15px', 'borderRadius': '8px', 'marginBottom': '20px'})
+                ]),
+                
+                # Characteristics
+                html.H4('🎯 Segment Characteristics', style={'color': COLORS['text'], 'marginBottom': '15px', 'fontSize': '16px', 'fontWeight': '600'}),
+                html.Div([
+                    html.P(char, style={'marginBottom': '12px', 'color': COLORS['text'], 'fontSize': '13px', 'lineHeight': '1.6'})
+                    for char in profile.get('characteristics', [])
+                ], style={'marginBottom': '20px'}),
+                
+                # Typical Products
+                html.Div([
+                    html.H4('📈 Typical Products', style={'color': COLORS['text'], 'marginBottom': '8px', 'fontSize': '14px', 'fontWeight': '600'}),
+                    html.P(profile.get('typical_products', ''), style={'color': COLORS['text_secondary'], 'fontSize': '13px', 'marginBottom': '15px', 'fontStyle': 'italic'}),
+                ]),
+                
+                # Engagement Strategy
+                html.Div([
+                    html.H4('🚀 Engagement Strategy', style={'color': COLORS['text'], 'marginBottom': '8px', 'fontSize': '14px', 'fontWeight': '600'}),
+                    html.P(profile.get('engagement_strategy', ''), style={'color': COLORS['text_secondary'], 'fontSize': '13px', 'marginBottom': '0px'}),
+                ])
+                
+            ], style={
+                'backgroundColor': COLORS['card_background'],
+                'borderRadius': '12px',
+                'padding': '30px',
+                'boxShadow': '0 4px 8px rgba(0,0,0,0.1)',
+                'borderTop': f'5px solid {COLORS["accent"]}',
+                'marginBottom': '30px'
+            })
+        
+        # Create segment overview visualization
+        segment_overview_fig = px.bar(
+            segment_overview_df if not segment_overview_df.empty else pd.DataFrame(),
+            x='market_segment',
+            y='customer_count',
+            title='Customer Distribution by Market Segment',
+            labels={'customer_count': 'Number of Customers', 'market_segment': 'Market Segment'},
+            text='customer_count',
+            color='avg_clv',
+            color_continuous_scale='Oranges'
+        )
+        segment_overview_fig.update_traces(
+            texttemplate='%{text:,}',
+            textposition='outside'
+        )
+        segment_overview_fig.update_layout(
+            template='plotly_white',
+            paper_bgcolor=COLORS['card_background'],
+            plot_bgcolor=COLORS['card_background'],
+            font={'color': COLORS['text']},
+            height=400,
+            margin=dict(t=40, b=60, l=60, r=20),
+            showlegend=False
+        )
+        
         return html.Div([
-            html.H2('Customer Segmentation', 
+            # Header
+            html.H2('Customer Market Segmentation', 
                    style={'color': COLORS['text'], 'marginBottom': '10px', 'fontSize': '24px', 'fontWeight': '600'}),
-            html.P('Understand how your customer base is distributed across different value segments.',
+            html.P('Understand the unique investment preferences and behaviors of your customer segments.',
                    style={'color': COLORS['text_secondary'], 'marginBottom': '30px', 'fontSize': '14px'}),
             
-            # Chart
+            # Overview Chart
             html.Div([
-                dcc.Graph(figure=segment_fig)
+                dcc.Graph(figure=segment_overview_fig)
             ], style={
                 'backgroundColor': COLORS['card_background'],
                 'borderRadius': '8px',
                 'padding': '20px',
-                'marginBottom': '20px',
+                'marginBottom': '40px',
                 'boxShadow': '0 2px 4px rgba(0,0,0,0.08)'
             }),
             
-            # Segment definitions
+            # Segment Profile Cards (2x2 grid)
             html.Div([
-                html.H4('Segment Definitions:', style={'color': COLORS['text'], 'marginBottom': '15px', 'fontSize': '18px'}),
-                html.Ul([
-                    html.Li('High Value: Customers with CLV > $7,500', style={'marginBottom': '10px', 'color': COLORS['text_secondary']}),
-                    html.Li('Medium Value: Customers with CLV $3,000 - $7,500', style={'marginBottom': '10px', 'color': COLORS['text_secondary']}),
-                    html.Li('Low Value: Customers with CLV < $3,000', style={'marginBottom': '10px', 'color': COLORS['text_secondary']}),
-                    html.Li('At Risk: Previously high-value customers with declining engagement', style={'marginBottom': '10px', 'color': COLORS['text_secondary']}),
-                    html.Li('New: Customers joined within the last 6 months', style={'marginBottom': '10px', 'color': COLORS['text_secondary']}),
-                ], style={'fontSize': '14px', 'lineHeight': '1.6'})
-            ], style={
-                'backgroundColor': COLORS['card_background'],
-                'padding': '25px',
-                'borderRadius': '8px',
-                'borderLeft': f'4px solid {COLORS["accent"]}',
-                'boxShadow': '0 2px 4px rgba(0,0,0,0.08)'
-            })
+                html.Div([
+                    create_segment_card('Blue Chip', segment_overview_df),
+                    create_segment_card('Crypto', segment_overview_df),
+                ], style={'flex': '1', 'marginRight': '20px'}),
+                html.Div([
+                    create_segment_card('Social Impact', segment_overview_df),
+                    create_segment_card('Sustainability Focused', segment_overview_df),
+                ], style={'flex': '1'})
+            ], style={'display': 'flex'})
         ])
     
     elif selected_tab == 'customer360':
+        # Create customer location distribution chart
+        if not churn_features_df.empty and 'country' in churn_features_df.columns:
+            country_distribution = churn_features_df['country'].value_counts().reset_index()
+            country_distribution.columns = ['country', 'customer_count']
+            
+            location_fig = px.bar(
+                country_distribution,
+                x='country',
+                y='customer_count',
+                title='Customer Distribution by Location',
+                labels={'customer_count': 'Number of Customers', 'country': 'Country'},
+                text='customer_count'
+            )
+            location_fig.update_traces(
+                marker_color=COLORS['accent'],
+                textposition='outside'
+            )
+            location_fig.update_layout(
+                template='plotly_white',
+                paper_bgcolor=COLORS['card_background'],
+                plot_bgcolor=COLORS['card_background'],
+                font={'color': COLORS['text']},
+                height=400,
+                margin=dict(t=40, b=60, l=60, r=20),
+                xaxis={'tickangle': -30}
+            )
+        else:
+            location_fig = go.Figure()
+        
         return html.Div([
             html.H2('Customer 360 Profile', 
                    style={'color': COLORS['text'], 'marginBottom': '10px', 'fontSize': '24px', 'fontWeight': '600'}),
@@ -918,16 +1294,29 @@ def render_tab_content(selected_tab):
                 create_metric_card('100', 'Total Profiles', '#ff8a65'),
             ], style={'display': 'flex', 'marginBottom': '30px', 'marginLeft': '-10px', 'marginRight': '-10px'}),
             
-            # Chart
+            # Demographics and Location Charts (Row 1)
             html.Div([
-                dcc.Graph(figure=demo_fig)
-            ], style={
-                'backgroundColor': COLORS['card_background'],
-                'borderRadius': '8px',
-                'padding': '20px',
-                'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
-                'marginBottom': '30px'
-            }),
+                html.Div([
+                    dcc.Graph(figure=demo_fig)
+                ], style={
+                    'backgroundColor': COLORS['card_background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
+                    'flex': '1',
+                    'marginRight': '15px'
+                }),
+                html.Div([
+                    dcc.Graph(figure=location_fig)
+                ], style={
+                    'backgroundColor': COLORS['card_background'],
+                    'borderRadius': '8px',
+                    'padding': '20px',
+                    'boxShadow': '0 2px 4px rgba(0,0,0,0.08)',
+                    'flex': '1',
+                    'marginLeft': '15px'
+                })
+            ], style={'display': 'flex', 'marginBottom': '30px'}),
             
             # Churn Features Table from Databricks (First 100 Rows)
             html.Div([
