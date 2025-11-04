@@ -1,0 +1,23 @@
+bundle:
+  name: customer-360-dash-app
+
+resources:
+  apps:
+    customer_360_app:
+      name: customer-360-app
+      description: Customer 360 Dash Application
+      source_code_path: ./src
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://e2-demo-field-eng.cloud.databricks.com
+      profile: e2-demo-field-eng
+  
+  prod:
+    mode: production
+    workspace:
+      host: https://e2-demo-field-eng.cloud.databricks.com
+      profile: e2-demo-field-eng
