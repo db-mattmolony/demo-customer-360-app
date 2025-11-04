@@ -2533,4 +2533,4 @@ def trigger_braze_job(n_clicks):
 
 # Run the app
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8050)
+    app.run(debug=False, host='0.0.0.0', port=8050)
