@@ -9,6 +9,21 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
+from databricks.sdk import WorkspaceClient
+from databricks.sdk.service.jobs import RunNowResponse
+import os
+from pathlib import Path
+
+# Load environment variables if .env.local exists
+env_local_path = Path(__file__).parent.parent / '.env.local'
+if env_local_path.exists():
+    with open(env_local_path) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith('#') and '=' in line:
+                key, value = line.split('=', 1)
+                os.environ[key] = value
+
 from services.C360Service import get_c360_service
 from services.CustomerChurnService import get_churn_service
 from services.CLVService import get_clv_service
@@ -1786,7 +1801,127 @@ def render_tab_content(selected_tab):
                     tooltip_data=[],
                     tooltip_duration=None
                     )
-                )
+                ),
+                
+                # Push to Braze Section
+                html.Div([
+                    # Description
+                    html.Div([
+                        html.H4('📤 Export Customer Cohort to Braze', 
+                               style={'color': COLORS['text'], 'marginBottom': '10px', 'fontSize': '18px', 'fontWeight': '600'}),
+                        html.P([
+                            html.Span('Use the filters above to identify your target customer cohort, then push this segment to ', 
+                                     style={'color': COLORS['text_secondary']}),
+                            html.Span('Braze', style={'color': COLORS['accent'], 'fontWeight': '600'}),
+                            html.Span(' for targeted marketing campaigns. ', style={'color': COLORS['text_secondary']}),
+                            html.Span('This workflow enables you to:', style={'color': COLORS['text_secondary']})
+                        ], style={'marginBottom': '10px', 'fontSize': '14px', 'lineHeight': '1.6'}),
+                        html.Ul([
+                            html.Li('🎯 Target high-value customers (CLV, VIP segments)', 
+                                   style={'color': COLORS['text_secondary'], 'fontSize': '13px', 'marginBottom': '5px'}),
+                            html.Li('🔴 Engage at-risk customers with retention campaigns', 
+                                   style={'color': COLORS['text_secondary'], 'fontSize': '13px', 'marginBottom': '5px'}),
+                            html.Li('📊 Create segment-specific messaging (Blue Chip, Crypto, etc.)', 
+                                   style={'color': COLORS['text_secondary'], 'fontSize': '13px', 'marginBottom': '5px'}),
+                            html.Li('🌍 Run geo-targeted campaigns by country', 
+                                   style={'color': COLORS['text_secondary'], 'fontSize': '13px', 'marginBottom': '5px'}),
+                        ], style={'marginLeft': '20px', 'marginBottom': '15px'}),
+                        html.P([
+                            html.Span('💡 ', style={'fontSize': '16px'}),
+                            html.Span('Tip: ', style={'fontWeight': '600', 'color': COLORS['text']}),
+                            html.Span('Apply filters, review the filtered customer list above, then click the button below to export this cohort for your marketing campaign.',
+                                     style={'color': COLORS['text_secondary'], 'fontStyle': 'italic'})
+                        ], style={'fontSize': '13px', 'backgroundColor': '#fff8f0', 'padding': '12px', 'borderRadius': '6px', 'border': f'1px solid {COLORS["accent"]}', 'marginBottom': '20px'})
+                    ], style={'marginTop': '30px', 'marginBottom': '20px'}),
+                    
+                    # Push to Braze Button and Info Section
+                    html.Div([
+                        # Left side: Button
+                        html.Div([
+                            html.Button([
+                                html.Img(
+                                    src='/assets/braze-logo.webp',
+                                    style={
+                                        'height': '24px',
+                                        'marginRight': '12px',
+                                        'verticalAlign': 'middle'
+                                    }
+                                ),
+                                html.Span('Push to Braze', style={'verticalAlign': 'middle', 'fontSize': '15px', 'fontWeight': '600'})
+                            ],
+                            id='push-to-braze-btn',
+                            n_clicks=0,
+                            style={
+                                'backgroundColor': COLORS['accent'],
+                                'color': 'white',
+                                'border': 'none',
+                                'padding': '14px 32px',
+                                'borderRadius': '8px',
+                                'fontSize': '15px',
+                                'fontWeight': '600',
+                                'cursor': 'pointer',
+                                'boxShadow': '0 4px 6px rgba(0,0,0,0.1)',
+                                'display': 'inline-flex',
+                                'alignItems': 'center',
+                                'transition': 'all 0.3s ease',
+                                'marginBottom': '15px'
+                            },
+                            className='braze-button'
+                            ),
+                            # Notification message
+                            html.Div(id='braze-notification', style={'marginTop': '15px'})
+                        ], style={'flex': '0 0 auto', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'paddingRight': '30px', 'borderRight': f'2px solid {COLORS["border"]}'}),
+                        
+                        # Right side: Braze Information
+                        html.Div([
+                            html.H5('About Braze', style={'color': COLORS['text'], 'marginBottom': '12px', 'fontSize': '16px', 'fontWeight': '600'}),
+                            html.P([
+                                'Braze provides a software platform for ',
+                                html.Span('engaging customers across multiple touchpoints', style={'fontWeight': '600', 'color': COLORS['accent']}),
+                                ', leveraging data, real-time triggers, journey orchestration, and personalisation.'
+                            ], style={'color': COLORS['text_secondary'], 'fontSize': '13px', 'lineHeight': '1.6', 'marginBottom': '15px'}),
+                            
+                            html.Div([
+                                html.P('Core Capabilities:', style={'fontWeight': '600', 'color': COLORS['text'], 'marginBottom': '10px', 'fontSize': '14px'}),
+                                
+                                html.Div([
+                                    html.Span('📊 ', style={'fontSize': '16px', 'marginRight': '8px'}),
+                                    html.Span('Data Activation & Unification: ', style={'fontWeight': '600', 'color': COLORS['text'], 'fontSize': '13px'}),
+                                    html.Span('Collect and unify data from multiple sources to build rich customer profiles for targeting.',
+                                             style={'color': COLORS['text_secondary'], 'fontSize': '13px'})
+                                ], style={'marginBottom': '10px'}),
+                                
+                                html.Div([
+                                    html.Span('🎯 ', style={'fontSize': '16px', 'marginRight': '8px'}),
+                                    html.Span('Segmentation & Orchestration: ', style={'fontWeight': '600', 'color': COLORS['text'], 'fontSize': '13px'}),
+                                    html.Span('Segment users based on behaviour and attributes, then design automated journeys that respond in real time.',
+                                             style={'color': COLORS['text_secondary'], 'fontSize': '13px'})
+                                ], style={'marginBottom': '10px'}),
+                                
+                                html.Div([
+                                    html.Span('📱 ', style={'fontSize': '16px', 'marginRight': '8px'}),
+                                    html.Span('Cross-Channel Messaging: ', style={'fontWeight': '600', 'color': COLORS['text'], 'fontSize': '13px'}),
+                                    html.Span('Support for email, push notifications, in-app messages, SMS, web push, and other channels.',
+                                             style={'color': COLORS['text_secondary'], 'fontSize': '13px'})
+                                ], style={'marginBottom': '10px'}),
+                                
+                                html.Div([
+                                    html.Span('🤖 ', style={'fontSize': '16px', 'marginRight': '8px'}),
+                                    html.Span('Personalisation & Optimisation: ', style={'fontWeight': '600', 'color': COLORS['text'], 'fontSize': '13px'}),
+                                    html.Span('Intelligent timing, channel preferences, ML-driven predictive events, and A/B/n testing.',
+                                             style={'color': COLORS['text_secondary'], 'fontSize': '13px'})
+                                ], style={'marginBottom': '10px'}),
+                                
+                                html.Div([
+                                    html.Span('⚡ ', style={'fontSize': '16px', 'marginRight': '8px'}),
+                                    html.Span('Real-Time Engagement: ', style={'fontWeight': '600', 'color': COLORS['text'], 'fontSize': '13px'}),
+                                    html.Span('Real-time API/SDK integration designed to act quickly on user behaviour.',
+                                             style={'color': COLORS['text_secondary'], 'fontSize': '13px'})
+                                ], style={'marginBottom': '10px'}),
+                            ])
+                        ], style={'flex': '1', 'paddingLeft': '30px', 'textAlign': 'left'})
+                    ], style={'display': 'flex', 'alignItems': 'flex-start', 'marginTop': '20px', 'padding': '20px', 'backgroundColor': '#f9f9f9', 'borderRadius': '8px', 'border': f'1px solid {COLORS["border"]}'})
+                ], style={'marginTop': '20px'})
             ], style={
                 'backgroundColor': COLORS['card_background'],
                 'borderRadius': '8px',
@@ -2303,6 +2438,97 @@ def update_customer_table(apply_clicks, reset_clicks, clv_range, vip_min, segmen
         error_age_fig = create_age_dist_figure(pd.DataFrame())
         error_location_fig = create_location_dist_figure(pd.DataFrame())
         return error_map, [], standard_columns, error_msg, clv_range, vip_min, segment, churn_risk, country, error_metric_cards, error_age_fig, error_location_fig
+
+
+# Callback to trigger Databricks job when Push to Braze button is clicked
+@callback(
+    Output('braze-notification', 'children'),
+    Input('push-to-braze-btn', 'n_clicks'),
+    prevent_initial_call=True
+)
+def trigger_braze_job(n_clicks):
+    """Trigger the Databricks job to push customer data to Braze."""
+    if n_clicks is None or n_clicks == 0:
+        raise dash.exceptions.PreventUpdate
+    
+    try:
+        print(f"[DEBUG] Button clicked! n_clicks={n_clicks}")
+        
+        # Initialize Databricks workspace client
+        # The SDK will automatically use the environment variables or default auth
+        w = WorkspaceClient()
+        print("[DEBUG] WorkspaceClient initialized successfully")
+        
+        # Get the job by name
+        job_name = "push-to-braze-job"
+        print(f"[DEBUG] Looking for job: {job_name}")
+        
+        # List all jobs and find the one matching our job name
+        try:
+            jobs = list(w.jobs.list())
+            print(f"[DEBUG] Found {len(jobs)} total jobs in workspace")
+            
+            # Debug: print all job names
+            for job in jobs:
+                if job.settings:
+                    print(f"[DEBUG] Job found: '{job.settings.name}' (ID: {job.job_id})")
+        except Exception as list_error:
+            print(f"[DEBUG] Error listing jobs: {list_error}")
+            raise
+        
+        target_job = None
+        
+        for job in jobs:
+            if job.settings and job.settings.name == job_name:
+                target_job = job
+                print(f"[DEBUG] ✅ Matched target job! ID: {job.job_id}")
+                break
+        
+        if not target_job:
+            print(f"[DEBUG] ❌ Job '{job_name}' not found in workspace")
+            # List available jobs for debugging
+            available_jobs = [job.settings.name for job in jobs if job.settings]
+            print(f"[DEBUG] Available jobs: {available_jobs}")
+            
+            return html.Div([
+                html.Span("❌ ", style={'fontSize': '18px'}),
+                html.Span(f"Job '{job_name}' not found. Please ensure the Databricks Asset Bundle is deployed.",
+                         style={'color': '#d32f2f', 'fontWeight': '600'}),
+                html.Br(),
+                html.Span(f"Available jobs: {', '.join(available_jobs[:5])}",
+                         style={'color': COLORS['text_secondary'], 'fontSize': '12px', 'marginTop': '5px', 'display': 'block'})
+            ], style={'padding': '12px', 'backgroundColor': '#ffebee', 'borderRadius': '6px', 'border': '1px solid #ef5350'})
+        
+        # Trigger the job
+        print(f"[DEBUG] Triggering job with ID: {target_job.job_id}")
+        run = w.jobs.run_now(job_id=target_job.job_id)
+        print(f"[DEBUG] ✅ Job triggered successfully! Run ID: {run.run_id}")
+        
+        return html.Div([
+            html.Span("✅ ", style={'fontSize': '18px'}),
+            html.Span(f"Successfully triggered job! Run ID: {run.run_id}",
+                     style={'color': '#2e7d32', 'fontWeight': '600'}),
+            html.Br(),
+            html.Span("The customer cohort is being pushed to Braze. Check the Databricks Jobs UI for progress.",
+                     style={'color': COLORS['text_secondary'], 'fontSize': '13px', 'marginTop': '5px', 'display': 'block'})
+        ], style={'padding': '12px', 'backgroundColor': '#e8f5e9', 'borderRadius': '6px', 'border': '1px solid #66bb6a'})
+        
+    except Exception as e:
+        print(f"[DEBUG] ❌ Exception occurred: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        return html.Div([
+            html.Span("❌ ", style={'fontSize': '18px'}),
+            html.Span(f"Error triggering job: {type(e).__name__}",
+                     style={'color': '#d32f2f', 'fontWeight': '600'}),
+            html.Br(),
+            html.Span(f"Details: {str(e)}",
+                     style={'color': COLORS['text_secondary'], 'fontSize': '12px', 'marginTop': '5px', 'display': 'block'}),
+            html.Br(),
+            html.Span("Please check your Databricks connection and ensure the job is deployed with 'databricks bundle deploy'.",
+                     style={'color': COLORS['text_secondary'], 'fontSize': '13px', 'marginTop': '5px', 'display': 'block'})
+        ], style={'padding': '12px', 'backgroundColor': '#ffebee', 'borderRadius': '6px', 'border': '1px solid #ef5350'})
 
 
 # Run the app

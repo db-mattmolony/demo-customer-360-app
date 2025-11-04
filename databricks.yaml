@@ -7,6 +7,15 @@ resources:
       name: customer-360-app
       description: Customer 360 Dash Application
       source_code_path: ./src
+  
+  jobs:
+    push_to_braze_job:
+      name: push-to-braze-job
+      tasks:
+        - task_key: push_to_braze
+          notebook_task:
+            notebook_path: ./notebooks/push_to_braze.py
+            source: WORKSPACE
 
 targets:
   dev:

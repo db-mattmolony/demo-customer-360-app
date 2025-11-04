@@ -24,6 +24,7 @@ class C360Service:
         """
         Fetch enriched customer churn features data with ML attributes.
         Joins churn_features with customer_ml_attributes for complete customer view.
+        Uses stratified sampling to ensure balanced representation of both risk groups.
         
         Args:
             limit: Maximum number of records to return
@@ -32,49 +33,76 @@ class C360Service:
             pd.DataFrame: Enriched churn features data with CLV, VIP, and segment info
         """
         query = f"""
+            WITH ranked_customers AS (
+                SELECT 
+                    cf.user_id,
+                    cf.email,
+                    cf.firstname,
+                    cf.lastname,
+                    cf.country,
+                    cf.gender,
+                    CASE cf.age_group
+                        WHEN 1 THEN '15-19'
+                        WHEN 2 THEN '20-24'
+                        WHEN 3 THEN '25-29'
+                        WHEN 4 THEN '30-34'
+                        WHEN 5 THEN '35-39'
+                        WHEN 6 THEN '40-49'
+                        WHEN 7 THEN '50-59'
+                        WHEN 8 THEN '60-69'
+                        WHEN 9 THEN '70-79'
+                        WHEN 10 THEN '80-100'
+                        ELSE 'Unknown'
+                    END as age_group,
+                    cf.platform,
+                    CASE cf.churn
+                        WHEN 1 THEN 'At Risk'
+                        WHEN 0 THEN 'Not at Risk'
+                        ELSE 'Unknown'
+                    END as churn_status,
+                    cf.order_count,
+                    cf.total_amount,
+                    cf.session_count,
+                    cf.event_count,
+                    cf.days_since_creation,
+                    cf.days_since_last_activity,
+                    cf.last_activity_date,
+                    ml.lat,
+                    ml.lon,
+                    ml.customer_lifetime_value,
+                    ml.vip_customer_probability,
+                    ml.market_segment,
+                    cf.churn,
+                    ROW_NUMBER() OVER (PARTITION BY cf.churn ORDER BY RAND()) as rn
+                FROM mmolony_catalog.dbdemo_customer_churn.churn_features cf
+                INNER JOIN mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
+                    ON cf.user_id = ml.user_id
+            )
             SELECT 
-                cf.user_id,
-                cf.email,
-                cf.firstname,
-                cf.lastname,
-                cf.country,
-                cf.gender,
-                CASE cf.age_group
-                    WHEN 1 THEN '15-19'
-                    WHEN 2 THEN '20-24'
-                    WHEN 3 THEN '25-29'
-                    WHEN 4 THEN '30-34'
-                    WHEN 5 THEN '35-39'
-                    WHEN 6 THEN '40-49'
-                    WHEN 7 THEN '50-59'
-                    WHEN 8 THEN '60-69'
-                    WHEN 9 THEN '70-79'
-                    WHEN 10 THEN '80-100'
-                    ELSE 'Unknown'
-                END as age_group,
-                cf.platform,
-                CASE cf.churn
-                    WHEN 1 THEN 'At Risk'
-                    WHEN 0 THEN 'Not at Risk'
-                    ELSE 'Unknown'
-                END as churn_status,
-                cf.order_count,
-                cf.total_amount,
-                cf.session_count,
-                cf.event_count,
-                cf.days_since_creation,
-                cf.days_since_last_activity,
-                cf.last_activity_date,
-                ml.lat,
-                ml.lon,
-                ml.customer_lifetime_value,
-                ml.vip_customer_probability,
-                ml.market_segment
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features cf
-            INNER JOIN mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
-                ON cf.user_id = ml.user_id
-            ORDER BY ml.customer_lifetime_value DESC
-            LIMIT {limit}
+                user_id,
+                email,
+                firstname,
+                lastname,
+                country,
+                gender,
+                age_group,
+                platform,
+                churn_status,
+                order_count,
+                total_amount,
+                session_count,
+                event_count,
+                days_since_creation,
+                days_since_last_activity,
+                last_activity_date,
+                lat,
+                lon,
+                customer_lifetime_value,
+                vip_customer_probability,
+                market_segment
+            FROM ranked_customers
+            WHERE rn <= {limit // 2}
+            ORDER BY customer_lifetime_value DESC
         """
         return self.sql_service.execute_query_as_dataframe(query)
     
@@ -230,7 +258,7 @@ class C360Service:
                 cf.firstname,
                 cf.lastname,
                 cf.email,
-                    CASE cf.churn
+                CASE cf.churn
                     WHEN 1 THEN 'At Risk'
                     WHEN 0 THEN 'Not at Risk'
                     ELSE 'Unknown'
