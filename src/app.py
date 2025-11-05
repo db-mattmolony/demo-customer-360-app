@@ -28,6 +28,7 @@ from services.CLVService import get_clv_service
 from services.SegmentationService import get_segmentation_service
 from services.VIPService import get_vip_service
 from segment_profiles import SEGMENT_PROFILES
+from config import get_table_name
 
 # Initialize the Dash app
 app = Dash(__name__, assets_folder='assets')
@@ -1984,7 +1985,7 @@ def render_tab_content(selected_tab):
                 create_metric_card(f'{total_at_risk:,}', 'Customers at Risk', COLORS['accent']),
                 create_metric_card(f'{total_not_at_risk:,}', 'Customers Not at Risk', '#7FB800'),
                 create_metric_card(f'${revenue_at_risk:,.0f}' if revenue_at_risk else '$0', 'Revenue at Risk', '#ff9800'),
-            ], style={'display': 'flex', 'marginBottom': '30px', 'marginLeft': '-10px', 'marginRight': '-10px'}),
+            ], id='churn-metric-cards', style={'display': 'flex', 'marginBottom': '30px', 'marginLeft': '-10px', 'marginRight': '-10px'}),
             
             # Risk Distribution and Timeline (Row 1)
             html.Div([
@@ -2122,7 +2123,7 @@ def render_tab_content(selected_tab):
         ])
 
 
-# Callback to filter churn visualizations
+# Callback to filter churn visualizations, metrics, and table
 @callback(
     [
         Output('risk-dist-graph', 'figure'),
@@ -2130,12 +2131,14 @@ def render_tab_content(selected_tab):
         Output('country-graph', 'figure'),
         Output('platform-graph', 'figure'),
         Output('age-graph', 'figure'),
-        Output('engagement-graph', 'figure')
+        Output('engagement-graph', 'figure'),
+        Output('churn-metric-cards', 'children'),
+        Output('top-at-risk-table', 'data')
     ],
     Input('churn-filter', 'value')
 )
 def update_churn_visualizations(filter_value):
-    """Filter all churn visualizations based on selected risk status."""
+    """Filter all churn visualizations, metrics, and table based on selected risk status."""
     
     # Filter the base datasets
     if filter_value == 'at_risk':
@@ -2185,7 +2188,34 @@ def update_churn_visualizations(filter_value):
     new_age_fig = create_age_churn_fig(filtered_age)
     new_engagement_fig = create_engagement_fig(filtered_engagement)
     
-    return new_risk_fig, new_timeline_fig, new_country_fig, new_platform_fig, new_age_fig, new_engagement_fig
+    # Calculate filtered metrics
+    if filter_value == 'at_risk':
+        total_at_risk = customers_at_risk_df['total_at_risk'].iloc[0] if not customers_at_risk_df.empty else 0
+        total_not_at_risk = 0
+        revenue_at_risk = customers_at_risk_df['total_revenue_at_risk'].iloc[0] if not customers_at_risk_df.empty else 0
+        # Get all at-risk customers for the table
+        filtered_table_data = top_at_risk_df.to_dict('records') if not top_at_risk_df.empty else []
+    elif filter_value == 'not_at_risk':
+        total_at_risk = 0
+        total_not_at_risk = customers_at_risk_df['total_not_at_risk'].iloc[0] if not customers_at_risk_df.empty else 0
+        revenue_at_risk = 0
+        # No table data for not at risk (table shows top at-risk customers)
+        filtered_table_data = []
+    else:
+        # Show all
+        total_at_risk = customers_at_risk_df['total_at_risk'].iloc[0] if not customers_at_risk_df.empty else 0
+        total_not_at_risk = customers_at_risk_df['total_not_at_risk'].iloc[0] if not customers_at_risk_df.empty else 0
+        revenue_at_risk = customers_at_risk_df['total_revenue_at_risk'].iloc[0] if not customers_at_risk_df.empty else 0
+        filtered_table_data = top_at_risk_df.to_dict('records') if not top_at_risk_df.empty else []
+    
+    # Create updated metric cards
+    metric_cards = [
+        create_metric_card(f'{total_at_risk:,}', 'Customers at Risk', COLORS['accent']),
+        create_metric_card(f'{total_not_at_risk:,}', 'Customers Not at Risk', '#7FB800'),
+        create_metric_card(f'${revenue_at_risk:,.0f}' if revenue_at_risk else '$0', 'Revenue at Risk', '#ff9800'),
+    ]
+    
+    return new_risk_fig, new_timeline_fig, new_country_fig, new_platform_fig, new_age_fig, new_engagement_fig, metric_cards, filtered_table_data
 
 
 # Callback to filter Customer 360 table, map, metrics, and demographics
@@ -2495,14 +2525,14 @@ def push_to_braze(n_clicks, clv_range, vip_min, segment, churn_risk, country):
         print(f"[DEBUG] WHERE clause: {where_clause}")
         
         # Step 1: Truncate the table
-        truncate_query = "TRUNCATE TABLE mmolony_catalog.dbdemo_customer_churn.braze_target_segment_sync"
+        truncate_query = f"TRUNCATE TABLE {get_table_name('braze_target_segment_sync')}"
         print(f"[DEBUG] Executing truncate query...")
         sql_service.execute_query(truncate_query)
         print(f"[DEBUG] ✅ Table truncated successfully")
         
         # Step 2: Insert filtered data
         insert_query = f"""
-            INSERT INTO mmolony_catalog.dbdemo_customer_churn.braze_target_segment_sync (
+            INSERT INTO {get_table_name('braze_target_segment_sync')} (
                 user_id,
                 email,
                 firstname,
@@ -2524,10 +2554,10 @@ def push_to_braze(n_clicks, clv_range, vip_min, segment, churn_risk, country):
                     a.market_segment,
                     a.vip_customer_probability
                 ) AS payload
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_user_features f
-            FULL OUTER JOIN mmolony_catalog.dbdemo_customer_churn.churn_users u
+            FROM {get_table_name('churn_user_features')} f
+            FULL OUTER JOIN {get_table_name('churn_users')} u
                 ON f.user_id = u.user_id
-            FULL OUTER JOIN mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes a
+            FULL OUTER JOIN {get_table_name('customer_ml_attributes')} a
                 ON COALESCE(f.user_id, u.user_id) = a.user_id
             WHERE {where_clause}
         """
@@ -2537,7 +2567,7 @@ def push_to_braze(n_clicks, clv_range, vip_min, segment, churn_risk, country):
         print(f"[DEBUG] ✅ Data inserted successfully")
         
         # Get count of inserted records
-        count_query = "SELECT COUNT(*) as count FROM mmolony_catalog.dbdemo_customer_churn.braze_target_segment_sync"
+        count_query = f"SELECT COUNT(*) as count FROM {get_table_name('braze_target_segment_sync')}"
         results, _ = sql_service.execute_query(count_query)
         record_count = results[0][0] if results else 0
         print(f"[DEBUG] ✅ {record_count} records inserted")

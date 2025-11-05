@@ -21,6 +21,8 @@ This notebook serves as a simple example for pipeline execution and can be exten
 
 ```python
 # Test a specific table function
+# Note: Catalog and schema names are configured in src/config.py
+# Default: mmolony_catalog.dbdemo_customer_churn
 df = spark.table("mmolony_catalog.dbdemo_customer_churn.churn_features")
 # ... test transformations ...
 display(df)

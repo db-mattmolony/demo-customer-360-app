@@ -56,8 +56,10 @@ databricks pipelines create \
   "storage": "/pipelines/customer_360",
   "configuration": {
     // Pipeline-level parameters accessible via spark.conf
+    // Note: Catalog and schema names are also configured in src/config.py
     "source_catalog": "mmolony_catalog",
-    "target_catalog": "mmolony_catalog"
+    "target_catalog": "mmolony_catalog",
+    "target_schema": "dbdemo_customer_churn"
   },
   "clusters": [
     {

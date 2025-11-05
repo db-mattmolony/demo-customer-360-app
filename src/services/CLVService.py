@@ -11,6 +11,7 @@ This service handles:
 from typing import Optional
 import pandas as pd
 from .SQLService import SQLService, get_sql_service
+from config import get_table_name
 
 
 class CLVService:
@@ -27,7 +28,7 @@ class CLVService:
         Returns:
             pd.DataFrame: Min, max, avg, stddev of CLV
         """
-        query = """
+        query = f"""
             SELECT 
                 COUNT(*) as total_customers,
                 ROUND(MIN(customer_lifetime_value), 2) as min_clv,
@@ -35,7 +36,7 @@ class CLVService:
                 ROUND(AVG(customer_lifetime_value), 2) as avg_clv,
                 ROUND(STDDEV(customer_lifetime_value), 2) as stddev_clv,
                 ROUND(SUM(customer_lifetime_value), 2) as total_clv
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE customer_lifetime_value IS NOT NULL
         """
         return self.sql_service.execute_query_as_dataframe(query)
@@ -54,7 +55,7 @@ class CLVService:
         Returns:
             pd.DataFrame: Customer counts and metrics by CLV segment
         """
-        query = """
+        query = f"""
             SELECT 
                 CASE 
                     WHEN customer_lifetime_value >= 2000 THEN 'High Value (≥$2000)'
@@ -66,7 +67,7 @@ class CLVService:
                 COUNT(*) as customer_count,
                 ROUND(AVG(ml.customer_lifetime_value), 2) as avg_clv,
                 ROUND(SUM(ml.customer_lifetime_value), 2) as total_clv_value
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
+            FROM {get_table_name('customer_ml_attributes')} ml
             WHERE ml.customer_lifetime_value IS NOT NULL
             GROUP BY clv_segment
             ORDER BY avg_clv DESC
@@ -80,7 +81,7 @@ class CLVService:
         Returns:
             pd.DataFrame: CLV metrics by market segment
         """
-        query = """
+        query = f"""
             SELECT 
                 market_segment,
                 COUNT(*) as customer_count,
@@ -88,7 +89,7 @@ class CLVService:
                 ROUND(MIN(customer_lifetime_value), 2) as min_clv,
                 ROUND(MAX(customer_lifetime_value), 2) as max_clv,
                 ROUND(SUM(customer_lifetime_value), 2) as total_clv
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE market_segment IS NOT NULL AND customer_lifetime_value IS NOT NULL
             GROUP BY market_segment
             ORDER BY avg_clv DESC
@@ -102,13 +103,13 @@ class CLVService:
         Returns:
             pd.DataFrame: CLV metrics by country
         """
-        query = """
+        query = f"""
             SELECT 
                 country,
                 COUNT(*) as customer_count,
                 ROUND(AVG(customer_lifetime_value), 2) as avg_clv,
                 ROUND(SUM(customer_lifetime_value), 2) as total_clv
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE country IS NOT NULL AND customer_lifetime_value IS NOT NULL
             GROUP BY country
             ORDER BY total_clv DESC
@@ -122,7 +123,7 @@ class CLVService:
         Returns:
             pd.DataFrame: CLV with total_amount, order_count, session_count, etc.
         """
-        query = """
+        query = f"""
             SELECT 
                 ml.customer_lifetime_value,
                 cf.total_amount,
@@ -132,8 +133,8 @@ class CLVService:
                 cf.days_since_creation,
                 cf.days_since_last_activity,
                 ml.vip_customer_probability
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
-            INNER JOIN mmolony_catalog.dbdemo_customer_churn.churn_features cf
+            FROM {get_table_name('customer_ml_attributes')} ml
+            INNER JOIN {get_table_name('churn_features')} cf
                 ON ml.user_id = cf.user_id
             WHERE ml.customer_lifetime_value IS NOT NULL
                 AND cf.total_amount IS NOT NULL
@@ -150,7 +151,7 @@ class CLVService:
         Returns:
             pd.DataFrame: Customer counts and CLV by VIP probability
         """
-        query = """
+        query = f"""
             SELECT 
                 CASE 
                     WHEN vip_customer_probability >= 0.7 THEN 'High VIP (≥0.7)'
@@ -162,7 +163,7 @@ class CLVService:
                 ROUND(AVG(customer_lifetime_value), 2) as avg_clv,
                 ROUND(AVG(vip_customer_probability), 4) as avg_vip_probability,
                 ROUND(SUM(customer_lifetime_value), 2) as total_clv
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE vip_customer_probability IS NOT NULL AND customer_lifetime_value IS NOT NULL
             GROUP BY vip_segment
             ORDER BY avg_vip_probability DESC
@@ -189,8 +190,8 @@ class CLVService:
                 cf.order_count,
                 ROUND(cf.total_amount, 2) as total_spent,
                 cf.session_count
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
-            LEFT JOIN mmolony_catalog.dbdemo_customer_churn.churn_features cf
+            FROM {get_table_name('customer_ml_attributes')} ml
+            LEFT JOIN {get_table_name('churn_features')} cf
                 ON ml.user_id = cf.user_id
             WHERE ml.customer_lifetime_value IS NOT NULL
             ORDER BY ml.customer_lifetime_value DESC
@@ -205,7 +206,7 @@ class CLVService:
         Returns:
             pd.DataFrame: CLV segments with avg spending, orders, sessions
         """
-        query = """
+        query = f"""
             SELECT 
                 CASE 
                     WHEN ml.customer_lifetime_value >= 2000 THEN 'High Value (≥$2000)'
@@ -220,8 +221,8 @@ class CLVService:
                 ROUND(AVG(cf.order_count), 2) as avg_orders,
                 ROUND(AVG(cf.session_count), 2) as avg_sessions,
                 ROUND(AVG(cf.event_count), 2) as avg_events
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
-            INNER JOIN mmolony_catalog.dbdemo_customer_churn.churn_features cf
+            FROM {get_table_name('customer_ml_attributes')} ml
+            INNER JOIN {get_table_name('churn_features')} cf
                 ON ml.user_id = cf.user_id
             WHERE ml.customer_lifetime_value IS NOT NULL
             GROUP BY clv_segment

@@ -11,6 +11,7 @@ This service handles:
 import pandas as pd
 from typing import Optional
 from .SQLService import get_sql_service
+from config import get_table_name
 
 
 class CustomerChurnService:
@@ -27,7 +28,7 @@ class CustomerChurnService:
         Returns:
             pd.DataFrame: Customer counts by country and risk status (At Risk / Not at Risk)
         """
-        query = """
+        query = f"""
             SELECT 
                 country,
                 CASE 
@@ -36,7 +37,7 @@ class CustomerChurnService:
                     ELSE 'Unknown'
                 END as risk_category,
                 COUNT(*) as customer_count
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             WHERE country IS NOT NULL
             GROUP BY country, risk_category
             ORDER BY country, 
@@ -55,7 +56,7 @@ class CustomerChurnService:
         Returns:
             pd.DataFrame: Churn metrics grouped by platform
         """
-        query = """
+        query = f"""
             SELECT 
                 platform,
                 COUNT(*) as total_customers,
@@ -64,7 +65,7 @@ class CustomerChurnService:
                 ROUND(AVG(CASE WHEN churn = 1 THEN 1.0 ELSE 0.0 END) * 100, 2) as churn_rate_pct,
                 ROUND(AVG(session_count), 2) as avg_sessions,
                 ROUND(AVG(event_count), 2) as avg_events
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             WHERE platform IS NOT NULL
             GROUP BY platform
             ORDER BY churn_rate_pct DESC
@@ -78,7 +79,7 @@ class CustomerChurnService:
         Returns:
             pd.DataFrame: Customer counts by age group and risk status (At Risk / Not at Risk)
         """
-        query = """
+        query = f"""
             SELECT 
                 age_group,
                 CASE 
@@ -87,7 +88,7 @@ class CustomerChurnService:
                     ELSE 'Unknown'
                 END as risk_category,
                 COUNT(*) as customer_count
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             WHERE age_group IS NOT NULL
             GROUP BY age_group, risk_category
             ORDER BY age_group, 
@@ -106,14 +107,14 @@ class CustomerChurnService:
         Returns:
             pd.DataFrame: Churn metrics grouped by gender
         """
-        query = """
+        query = f"""
             SELECT 
                 gender,
                 COUNT(*) as total_customers,
                 SUM(CASE WHEN churn = 1 THEN 1 ELSE 0 END) as churned_customers,
                 SUM(CASE WHEN churn = 0 THEN 1 ELSE 0 END) as active_customers,
                 ROUND(AVG(CASE WHEN churn = 1 THEN 1.0 ELSE 0.0 END) * 100, 2) as churn_rate_pct
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             WHERE gender IS NOT NULL
             GROUP BY gender
             ORDER BY churn_rate_pct DESC
@@ -127,14 +128,14 @@ class CustomerChurnService:
         Returns:
             pd.DataFrame: Churn metrics grouped by canal
         """
-        query = """
+        query = f"""
             SELECT 
                 canal,
                 COUNT(*) as total_customers,
                 SUM(CASE WHEN churn = 1 THEN 1 ELSE 0 END) as churned_customers,
                 SUM(CASE WHEN churn = 0 THEN 1 ELSE 0 END) as active_customers,
                 ROUND(AVG(CASE WHEN churn = 1 THEN 1.0 ELSE 0.0 END) * 100, 2) as churn_rate_pct
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             WHERE canal IS NOT NULL
             GROUP BY canal
             ORDER BY churn_rate_pct DESC
@@ -171,7 +172,7 @@ class CustomerChurnService:
                     WHEN days_since_last_activity > 30 THEN 'High'
                     ELSE 'Medium'
                 END as risk_level
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             WHERE churn = 0
                 AND days_since_last_activity IS NOT NULL
             ORDER BY days_since_last_activity DESC, order_count ASC
@@ -186,13 +187,13 @@ class CustomerChurnService:
         Returns:
             pd.DataFrame: Customer counts and revenue by risk status
         """
-        query = """
+        query = f"""
             SELECT 
                 SUM(CASE WHEN churn = 1 THEN 1 ELSE 0 END) as total_at_risk,
                 SUM(CASE WHEN churn = 0 THEN 1 ELSE 0 END) as total_not_at_risk,
                 SUM(CASE WHEN churn = 1 THEN total_amount ELSE 0 END) as total_revenue_at_risk,
                 SUM(CASE WHEN churn = 0 THEN total_amount ELSE 0 END) as total_revenue_not_at_risk
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
         """
         return self.sql_service.execute_query_as_dataframe(query)
     
@@ -205,7 +206,7 @@ class CustomerChurnService:
         Returns:
             pd.DataFrame: Binary risk distribution (At Risk / Not at Risk)
         """
-        query = """
+        query = f"""
             SELECT 
                 CASE 
                     WHEN churn = 1 THEN 'At Risk'
@@ -215,7 +216,7 @@ class CustomerChurnService:
                 COUNT(*) as customer_count,
                 ROUND(AVG(total_amount), 2) as avg_revenue,
                 ROUND(SUM(total_amount), 2) as total_revenue
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             GROUP BY risk_category
             ORDER BY 
                 CASE risk_category
@@ -233,12 +234,12 @@ class CustomerChurnService:
         Returns:
             pd.DataFrame: Churn by customer tenure (bucketed by standard deviation)
         """
-        query = """
+        query = f"""
             WITH stats AS (
                 SELECT 
                     AVG(days_since_creation) as mean_tenure,
                     STDDEV(days_since_creation) as stddev_tenure
-                FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+                FROM {get_table_name('churn_features')}
                 WHERE days_since_creation IS NOT NULL
             )
             SELECT 
@@ -255,7 +256,7 @@ class CustomerChurnService:
                 ROUND(MIN(days_since_creation), 0) as min_days,
                 ROUND(MAX(days_since_creation), 0) as max_days,
                 ROUND(AVG(days_since_creation), 0) as avg_days
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             CROSS JOIN stats
             WHERE days_since_creation IS NOT NULL
             GROUP BY customer_tenure
@@ -278,14 +279,14 @@ class CustomerChurnService:
         Returns:
             pd.DataFrame: Customer counts by engagement quartile and risk status (At Risk / Not at Risk)
         """
-        query = """
+        query = f"""
             WITH engagement_quartiles AS (
                 SELECT 
                     user_id,
                     churn,
                     order_count,
                     NTILE(4) OVER (ORDER BY order_count) as order_quartile
-                FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+                FROM {get_table_name('churn_features')}
                 WHERE order_count IS NOT NULL
             )
             SELECT 

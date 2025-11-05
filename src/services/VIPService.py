@@ -11,6 +11,7 @@ This service handles:
 from typing import Optional
 import pandas as pd
 from .SQLService import SQLService, get_sql_service
+from config import get_table_name
 
 
 class VIPService:
@@ -27,7 +28,7 @@ class VIPService:
         Returns:
             pd.DataFrame: VIP counts, avg CLV, and key metrics
         """
-        query = """
+        query = f"""
             SELECT 
                 COUNT(*) as total_customers,
                 COUNT(CASE WHEN vip_customer_probability >= 0.7 THEN 1 END) as high_vip_count,
@@ -37,7 +38,7 @@ class VIPService:
                 ROUND(AVG(customer_lifetime_value), 2) as avg_clv,
                 ROUND(AVG(CASE WHEN vip_customer_probability >= 0.7 THEN customer_lifetime_value END), 2) as avg_clv_high_vip,
                 ROUND(SUM(CASE WHEN vip_customer_probability >= 0.5 THEN customer_lifetime_value END), 2) as total_vip_value
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE vip_customer_probability IS NOT NULL
         """
         return self.sql_service.execute_query_as_dataframe(query)
@@ -49,7 +50,7 @@ class VIPService:
         Returns:
             pd.DataFrame: Customer counts and metrics by VIP tier
         """
-        query = """
+        query = f"""
             SELECT 
                 CASE 
                     WHEN vip_customer_probability >= 0.9 THEN 'Platinum VIP (0.9+)'
@@ -64,7 +65,7 @@ class VIPService:
                 ROUND(MIN(customer_lifetime_value), 2) as min_clv,
                 ROUND(MAX(customer_lifetime_value), 2) as max_clv,
                 ROUND(SUM(customer_lifetime_value), 2) as total_clv
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE vip_customer_probability IS NOT NULL
             GROUP BY vip_tier
             ORDER BY avg_vip_probability DESC
@@ -78,7 +79,7 @@ class VIPService:
         Returns:
             pd.DataFrame: VIP rates and counts by market segment
         """
-        query = """
+        query = f"""
             SELECT 
                 market_segment,
                 COUNT(*) as total_customers,
@@ -86,7 +87,7 @@ class VIPService:
                 ROUND(100.0 * COUNT(CASE WHEN vip_customer_probability >= 0.5 THEN 1 END) / COUNT(*), 1) as vip_rate_pct,
                 ROUND(AVG(CASE WHEN vip_customer_probability >= 0.5 THEN vip_customer_probability END), 4) as avg_vip_probability,
                 ROUND(AVG(CASE WHEN vip_customer_probability >= 0.5 THEN customer_lifetime_value END), 2) as avg_vip_clv
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE market_segment IS NOT NULL
             GROUP BY market_segment
             ORDER BY vip_rate_pct DESC
@@ -100,14 +101,14 @@ class VIPService:
         Returns:
             pd.DataFrame: VIP counts and rates by country
         """
-        query = """
+        query = f"""
             SELECT 
                 country,
                 COUNT(*) as total_customers,
                 COUNT(CASE WHEN vip_customer_probability >= 0.5 THEN 1 END) as vip_customers,
                 ROUND(100.0 * COUNT(CASE WHEN vip_customer_probability >= 0.5 THEN 1 END) / COUNT(*), 1) as vip_rate_pct,
                 ROUND(AVG(CASE WHEN vip_customer_probability >= 0.5 THEN customer_lifetime_value END), 2) as avg_vip_clv
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE country IS NOT NULL
             GROUP BY country
             ORDER BY vip_customers DESC
@@ -132,7 +133,7 @@ class VIPService:
                 country,
                 market_segment,
                 assigned_city
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE vip_customer_probability >= 0.5
             ORDER BY vip_customer_probability DESC, customer_lifetime_value DESC
             LIMIT {limit}
@@ -146,12 +147,12 @@ class VIPService:
         Returns:
             pd.DataFrame: VIP probability and CLV for scatter plot
         """
-        query = """
+        query = f"""
             SELECT 
                 vip_customer_probability,
                 customer_lifetime_value,
                 market_segment
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE vip_customer_probability IS NOT NULL 
                 AND customer_lifetime_value IS NOT NULL
                 AND vip_customer_probability >= 0.3
@@ -166,7 +167,7 @@ class VIPService:
         Returns:
             pd.DataFrame: Engagement and spending metrics by VIP status
         """
-        query = """
+        query = f"""
             SELECT 
                 CASE 
                     WHEN ml.vip_customer_probability >= 0.5 THEN 'VIP (≥0.5)'
@@ -180,8 +181,8 @@ class VIPService:
                 ROUND(AVG(cf.days_since_creation), 1) as avg_tenure_days,
                 ROUND(100.0 * SUM(CASE WHEN cf.churn = 0 THEN 1 ELSE 0 END) / COUNT(*), 1) as retention_rate_pct,
                 ROUND(AVG(ml.customer_lifetime_value), 2) as avg_clv
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
-            INNER JOIN mmolony_catalog.dbdemo_customer_churn.churn_features cf
+            FROM {get_table_name('customer_ml_attributes')} ml
+            INNER JOIN {get_table_name('churn_features')} cf
                 ON ml.user_id = cf.user_id
             WHERE ml.vip_customer_probability IS NOT NULL
             GROUP BY vip_status

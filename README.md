@@ -108,14 +108,34 @@ This baseline template includes:
 - ✅ DAB configuration for multi-environment deployment
 - ✅ Development and Production targets
 
+## Configuration
+
+### Database Configuration
+
+The application uses centralized database configuration in `src/config.py`:
+
+```python
+# Database configuration
+DB_CATALOG = 'mmolony_catalog'
+DB_SCHEMA = 'dbdemo_customer_churn'
+```
+
+To use your own catalog and schema:
+1. Edit `src/config.py`
+2. Update `DB_CATALOG` and `DB_SCHEMA` values
+3. All queries will automatically use the new configuration
+
+This eliminates the need to update hardcoded table names throughout the codebase.
+
 ## Customization
 
 To customize this template for your needs:
 
 1. **Update app.py**: Modify the Dash application logic and UI
 2. **Add data sources**: Connect to Databricks tables, Unity Catalog, or external APIs
-3. **Extend requirements.txt**: Add additional Python packages as needed
-4. **Configure databricks.yaml**: Adjust compute resources, permissions, and deployment settings
+3. **Configure database**: Update `DB_CATALOG` and `DB_SCHEMA` in `src/config.py`
+4. **Extend requirements.txt**: Add additional Python packages as needed
+5. **Configure databricks.yaml**: Adjust compute resources, permissions, and deployment settings
 
 ## Troubleshooting
 

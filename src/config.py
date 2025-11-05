@@ -2,6 +2,23 @@
 Application configuration and constants.
 """
 
+# Database configuration
+DB_CATALOG = 'mmolony_catalog'
+DB_SCHEMA = 'dbdemo_customer_churn'
+
+# Helper function to build fully qualified table names
+def get_table_name(table: str) -> str:
+    """
+    Build a fully qualified table name from catalog, schema, and table.
+    
+    Args:
+        table: The table name
+        
+    Returns:
+        Fully qualified table name: catalog.schema.table
+    """
+    return f"{DB_CATALOG}.{DB_SCHEMA}.{table}"
+
 # Color scheme matching Betashares branding (Orange theme)
 COLORS = {
     'background': '#f5f5f5',
@@ -48,4 +65,6 @@ RISK_COLORS = {
     'At Risk': '#ff5722',               # Orange (accent) - at risk (churn=1)
     'Unknown': '#9e9e9e'                # Gray
 }
+
+
 

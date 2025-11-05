@@ -11,6 +11,7 @@ This service handles:
 import pandas as pd
 from typing import Optional
 from .SQLService import get_sql_service
+from config import get_table_name
 
 
 class C360Service:
@@ -74,8 +75,8 @@ class C360Service:
                     ml.market_segment,
                     cf.churn,
                     ROW_NUMBER() OVER (PARTITION BY cf.churn ORDER BY RAND()) as rn
-                FROM mmolony_catalog.dbdemo_customer_churn.churn_features cf
-                INNER JOIN mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
+                FROM {get_table_name('churn_features')} cf
+                INNER JOIN {get_table_name('customer_ml_attributes')} ml
                     ON cf.user_id = ml.user_id
             )
             SELECT 
@@ -113,9 +114,9 @@ class C360Service:
         Returns:
             pd.DataFrame: Complete churn features data
         """
-        query = """
+        query = f"""
             SELECT * 
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
         """
         return self.sql_service.execute_query_as_dataframe(query)
     
@@ -126,7 +127,7 @@ class C360Service:
         Returns:
             pd.DataFrame: Summary statistics
         """
-        query = """
+        query = f"""
             SELECT 
                 COUNT(*) as total_customers,
                 SUM(CASE WHEN churn = 1 THEN 1 ELSE 0 END) as churned_customers,
@@ -134,7 +135,7 @@ class C360Service:
                 AVG(order_count) as avg_orders,
                 AVG(total_amount) as avg_revenue,
                 AVG(days_since_last_activity) as avg_days_inactive
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
         """
         return self.sql_service.execute_query_as_dataframe(query)
     
@@ -145,14 +146,14 @@ class C360Service:
         Returns:
             pd.DataFrame: Churn statistics by segment
         """
-        query = """
+        query = f"""
             SELECT 
                 age_group,
                 gender,
                 COUNT(*) as customer_count,
                 SUM(CASE WHEN churn = 1 THEN 1 ELSE 0 END) as churned,
                 ROUND(AVG(CASE WHEN churn = 1 THEN 1.0 ELSE 0.0 END) * 100, 2) as churn_rate
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             GROUP BY age_group, gender
             ORDER BY churn_rate DESC
         """
@@ -165,7 +166,7 @@ class C360Service:
         Returns:
             pd.DataFrame: Metrics grouped by platform
         """
-        query = """
+        query = f"""
             SELECT 
                 platform,
                 COUNT(*) as customer_count,
@@ -173,7 +174,7 @@ class C360Service:
                 AVG(event_count) as avg_events,
                 AVG(order_count) as avg_orders,
                 AVG(total_amount) as avg_revenue
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             WHERE platform IS NOT NULL
             GROUP BY platform
             ORDER BY customer_count DESC
@@ -201,7 +202,7 @@ class C360Service:
                 total_amount,
                 last_activity_date,
                 churn
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             WHERE days_since_last_activity > {risk_threshold}
                 AND churn = 0
             ORDER BY days_since_last_activity DESC
@@ -290,8 +291,8 @@ class C360Service:
                 cf.days_since_last_activity,
                 ml.lat,
                 ml.lon
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features cf
-            INNER JOIN mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
+            FROM {get_table_name('churn_features')} cf
+            INNER JOIN {get_table_name('customer_ml_attributes')} ml
                 ON cf.user_id = ml.user_id
             WHERE {where_clause}
             ORDER BY ml.customer_lifetime_value DESC
@@ -306,16 +307,16 @@ class C360Service:
         Returns:
             dict: Dictionary containing available countries and segments
         """
-        countries_query = """
+        countries_query = f"""
             SELECT DISTINCT country 
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features
+            FROM {get_table_name('churn_features')}
             WHERE country IS NOT NULL
             ORDER BY country
         """
         
-        segments_query = """
+        segments_query = f"""
             SELECT DISTINCT market_segment 
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE market_segment IS NOT NULL
             ORDER BY market_segment
         """
@@ -389,8 +390,8 @@ class C360Service:
                         ELSE NULL
                     END
                 ), 1) as avg_age
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features cf
-            INNER JOIN mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
+            FROM {get_table_name('churn_features')} cf
+            INNER JOIN {get_table_name('customer_ml_attributes')} ml
                 ON cf.user_id = ml.user_id
             WHERE {where_clause}
         """
@@ -453,8 +454,8 @@ class C360Service:
                     ELSE NULL
                 END as age,
                 cf.gender
-            FROM mmolony_catalog.dbdemo_customer_churn.churn_features cf
-            INNER JOIN mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
+            FROM {get_table_name('churn_features')} cf
+            INNER JOIN {get_table_name('customer_ml_attributes')} ml
                 ON cf.user_id = ml.user_id
             WHERE {where_clause}
                 AND cf.age_group IS NOT NULL

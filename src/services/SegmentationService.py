@@ -10,6 +10,7 @@ This service handles:
 from typing import Optional
 import pandas as pd
 from .SQLService import SQLService, get_sql_service
+from config import get_table_name
 
 
 class SegmentationService:
@@ -26,7 +27,7 @@ class SegmentationService:
         Returns:
             pd.DataFrame: Customer counts, avg CLV, and metrics by segment
         """
-        query = """
+        query = f"""
             SELECT 
                 market_segment,
                 COUNT(*) as customer_count,
@@ -36,7 +37,7 @@ class SegmentationService:
                 ROUND(SUM(customer_lifetime_value), 2) as total_clv,
                 ROUND(AVG(vip_customer_probability), 4) as avg_vip_probability,
                 COUNT(CASE WHEN vip_customer_probability >= 0.5 THEN 1 END) as high_vip_count
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE market_segment IS NOT NULL
             GROUP BY market_segment
             ORDER BY avg_clv DESC
@@ -86,8 +87,8 @@ class SegmentationService:
                 -- CLV from joined table
                 ROUND(AVG(ml.customer_lifetime_value), 2) as avg_clv
                 
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml {sample_clause}
-            INNER JOIN mmolony_catalog.dbdemo_customer_churn.churn_features cf {sample_clause}
+            FROM {get_table_name('customer_ml_attributes')} ml {sample_clause}
+            INNER JOIN {get_table_name('churn_features')} cf {sample_clause}
                 ON ml.user_id = cf.user_id
             WHERE ml.market_segment IS NOT NULL
             GROUP BY ml.market_segment
@@ -105,14 +106,14 @@ class SegmentationService:
         Returns:
             pd.DataFrame: Quick behavioral metrics by segment
         """
-        query = """
+        query = f"""
             WITH sampled_customers AS (
                 SELECT 
                     ml.market_segment,
                     ml.user_id,
                     ml.customer_lifetime_value,
                     ROW_NUMBER() OVER (PARTITION BY ml.market_segment ORDER BY RAND()) as rn
-                FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes ml
+                FROM {get_table_name('customer_ml_attributes')} ml
                 WHERE ml.market_segment IS NOT NULL
             )
             SELECT 
@@ -139,7 +140,7 @@ class SegmentationService:
                 ROUND(AVG(sc.customer_lifetime_value), 2) as avg_clv
                 
             FROM sampled_customers sc
-            INNER JOIN mmolony_catalog.dbdemo_customer_churn.churn_features cf
+            INNER JOIN {get_table_name('churn_features')} cf
                 ON sc.user_id = cf.user_id
             WHERE sc.rn <= 5000  -- Limit to 5000 per segment
             GROUP BY sc.market_segment
@@ -154,13 +155,13 @@ class SegmentationService:
         Returns:
             pd.DataFrame: Customer counts by segment and country
         """
-        query = """
+        query = f"""
             SELECT 
                 market_segment,
                 country,
                 COUNT(*) as customer_count,
                 ROUND(AVG(customer_lifetime_value), 2) as avg_clv
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE market_segment IS NOT NULL AND country IS NOT NULL
             GROUP BY market_segment, country
             ORDER BY market_segment, customer_count DESC
@@ -174,7 +175,7 @@ class SegmentationService:
         Returns:
             pd.DataFrame: CLV ranges by segment
         """
-        query = """
+        query = f"""
             SELECT 
                 market_segment,
                 CASE 
@@ -185,7 +186,7 @@ class SegmentationService:
                 END as clv_range,
                 COUNT(*) as customer_count,
                 ROUND(AVG(customer_lifetime_value), 2) as avg_clv
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE market_segment IS NOT NULL AND customer_lifetime_value IS NOT NULL
             GROUP BY market_segment, clv_range
             ORDER BY market_segment, avg_clv DESC
@@ -199,7 +200,7 @@ class SegmentationService:
         Returns:
             pd.DataFrame: VIP probability ranges by segment
         """
-        query = """
+        query = f"""
             SELECT 
                 market_segment,
                 CASE 
@@ -210,7 +211,7 @@ class SegmentationService:
                 END as vip_range,
                 COUNT(*) as customer_count,
                 ROUND(AVG(vip_customer_probability), 4) as avg_vip_prob
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE market_segment IS NOT NULL AND vip_customer_probability IS NOT NULL
             GROUP BY market_segment, vip_range
             ORDER BY market_segment, avg_vip_prob DESC
@@ -234,7 +235,7 @@ class SegmentationService:
                 ROUND(customer_lifetime_value, 2) as clv,
                 country,
                 ROUND(vip_customer_probability, 4) as vip_probability
-            FROM mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes
+            FROM {get_table_name('customer_ml_attributes')}
             WHERE market_segment = '{segment}' AND customer_lifetime_value IS NOT NULL
             ORDER BY customer_lifetime_value DESC
             LIMIT {limit}
