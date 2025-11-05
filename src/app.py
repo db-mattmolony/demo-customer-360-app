@@ -9,8 +9,6 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
-from databricks.sdk import WorkspaceClient
-from databricks.sdk.service.jobs import RunNowResponse
 import os
 from pathlib import Path
 
@@ -2440,76 +2438,116 @@ def update_customer_table(apply_clicks, reset_clicks, clv_range, vip_min, segmen
         return error_map, [], standard_columns, error_msg, clv_range, vip_min, segment, churn_risk, country, error_metric_cards, error_age_fig, error_location_fig
 
 
-# Callback to trigger Databricks job when Push to Braze button is clicked
+# Callback to truncate and replace Braze table with filtered data
 @callback(
     Output('braze-notification', 'children'),
     Input('push-to-braze-btn', 'n_clicks'),
+    [
+        State('filter-clv-range', 'value'),
+        State('filter-vip-min', 'value'),
+        State('filter-segment', 'value'),
+        State('filter-churn-risk', 'value'),
+        State('filter-country', 'value')
+    ],
     prevent_initial_call=True
 )
-def trigger_braze_job(n_clicks):
-    """Trigger the Databricks job to push customer data to Braze."""
+def push_to_braze(n_clicks, clv_range, vip_min, segment, churn_risk, country):
+    """Truncate and replace Braze table with filtered customer data."""
     if n_clicks is None or n_clicks == 0:
         raise dash.exceptions.PreventUpdate
     
     try:
-        print(f"[DEBUG] Button clicked! n_clicks={n_clicks}")
+        print(f"[DEBUG] Push to Braze button clicked! n_clicks={n_clicks}")
+        print(f"[DEBUG] Filters - CLV: {clv_range}, VIP: {vip_min}, Segment: {segment}, Churn: {churn_risk}, Country: {country}")
         
-        # Initialize Databricks workspace client
-        # The SDK will automatically use the environment variables or default auth
-        w = WorkspaceClient()
-        print("[DEBUG] WorkspaceClient initialized successfully")
+        # Get SQL service
+        from services.SQLService import get_sql_service
+        sql_service = get_sql_service()
         
-        # Get the job by name
-        job_name = "push-to-braze-job"
-        print(f"[DEBUG] Looking for job: {job_name}")
+        # Build WHERE clause conditions based on filters
+        conditions = []
         
-        # List all jobs and find the one matching our job name
-        try:
-            jobs = list(w.jobs.list())
-            print(f"[DEBUG] Found {len(jobs)} total jobs in workspace")
-            
-            # Debug: print all job names
-            for job in jobs:
-                if job.settings:
-                    print(f"[DEBUG] Job found: '{job.settings.name}' (ID: {job.job_id})")
-        except Exception as list_error:
-            print(f"[DEBUG] Error listing jobs: {list_error}")
-            raise
+        # Extract CLV min and max from range slider
+        if clv_range and len(clv_range) == 2:
+            clv_min_val = clv_range[0]
+            clv_max_val = clv_range[1]
+            conditions.append(f"a.customer_lifetime_value >= {clv_min_val}")
+            conditions.append(f"a.customer_lifetime_value <= {clv_max_val}")
         
-        target_job = None
+        # VIP minimum probability
+        if vip_min and vip_min != '':
+            conditions.append(f"a.vip_customer_probability >= {vip_min}")
         
-        for job in jobs:
-            if job.settings and job.settings.name == job_name:
-                target_job = job
-                print(f"[DEBUG] ✅ Matched target job! ID: {job.job_id}")
-                break
+        # Market segment
+        if segment:
+            conditions.append(f"a.market_segment = '{segment}'")
         
-        if not target_job:
-            print(f"[DEBUG] ❌ Job '{job_name}' not found in workspace")
-            # List available jobs for debugging
-            available_jobs = [job.settings.name for job in jobs if job.settings]
-            print(f"[DEBUG] Available jobs: {available_jobs}")
-            
-            return html.Div([
-                html.Span("❌ ", style={'fontSize': '18px'}),
-                html.Span(f"Job '{job_name}' not found. Please ensure the Databricks Asset Bundle is deployed.",
-                         style={'color': '#d32f2f', 'fontWeight': '600'}),
-                html.Br(),
-                html.Span(f"Available jobs: {', '.join(available_jobs[:5])}",
-                         style={'color': COLORS['text_secondary'], 'fontSize': '12px', 'marginTop': '5px', 'display': 'block'})
-            ], style={'padding': '12px', 'backgroundColor': '#ffebee', 'borderRadius': '6px', 'border': '1px solid #ef5350'})
+        # Churn risk
+        if churn_risk != '' and churn_risk is not None:
+            conditions.append(f"f.churn = {churn_risk}")
         
-        # Trigger the job
-        print(f"[DEBUG] Triggering job with ID: {target_job.job_id}")
-        run = w.jobs.run_now(job_id=target_job.job_id)
-        print(f"[DEBUG] ✅ Job triggered successfully! Run ID: {run.run_id}")
+        # Country
+        if country:
+            conditions.append(f"a.country = '{country}'")
+        
+        where_clause = " AND ".join(conditions) if conditions else "1=1"
+        
+        print(f"[DEBUG] WHERE clause: {where_clause}")
+        
+        # Step 1: Truncate the table
+        truncate_query = "TRUNCATE TABLE mmolony_catalog.dbdemo_customer_churn.braze_target_segment_sync"
+        print(f"[DEBUG] Executing truncate query...")
+        sql_service.execute_query(truncate_query)
+        print(f"[DEBUG] ✅ Table truncated successfully")
+        
+        # Step 2: Insert filtered data
+        insert_query = f"""
+            INSERT INTO mmolony_catalog.dbdemo_customer_churn.braze_target_segment_sync (
+                user_id,
+                email,
+                firstname,
+                lastname,
+                address,
+                payload
+            )
+            SELECT
+                COALESCE(f.user_id, u.user_id, a.user_id) AS user_id,
+                u.email, 
+                u.firstname,
+                u.lastname,
+                u.address,
+                struct(
+                    f.churn,
+                    a.customer_lifetime_value,
+                    a.country,
+                    a.assigned_city,
+                    a.market_segment,
+                    a.vip_customer_probability
+                ) AS payload
+            FROM mmolony_catalog.dbdemo_customer_churn.churn_user_features f
+            FULL OUTER JOIN mmolony_catalog.dbdemo_customer_churn.churn_users u
+                ON f.user_id = u.user_id
+            FULL OUTER JOIN mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes a
+                ON COALESCE(f.user_id, u.user_id) = a.user_id
+            WHERE {where_clause}
+        """
+        
+        print(f"[DEBUG] Executing insert query...")
+        sql_service.execute_query(insert_query)
+        print(f"[DEBUG] ✅ Data inserted successfully")
+        
+        # Get count of inserted records
+        count_query = "SELECT COUNT(*) as count FROM mmolony_catalog.dbdemo_customer_churn.braze_target_segment_sync"
+        results, _ = sql_service.execute_query(count_query)
+        record_count = results[0][0] if results else 0
+        print(f"[DEBUG] ✅ {record_count} records inserted")
         
         return html.Div([
             html.Span("✅ ", style={'fontSize': '18px'}),
-            html.Span(f"Successfully triggered job! Run ID: {run.run_id}",
+            html.Span(f"Successfully pushed {record_count:,} customer profiles to Braze!",
                      style={'color': '#2e7d32', 'fontWeight': '600'}),
             html.Br(),
-            html.Span("The customer cohort is being pushed to Braze. Check the Databricks Jobs UI for progress.",
+            html.Span("The customer cohort has been synced to the braze_target_segment_sync table.",
                      style={'color': COLORS['text_secondary'], 'fontSize': '13px', 'marginTop': '5px', 'display': 'block'})
         ], style={'padding': '12px', 'backgroundColor': '#e8f5e9', 'borderRadius': '6px', 'border': '1px solid #66bb6a'})
         
@@ -2520,13 +2558,13 @@ def trigger_braze_job(n_clicks):
         
         return html.Div([
             html.Span("❌ ", style={'fontSize': '18px'}),
-            html.Span(f"Error triggering job: {type(e).__name__}",
+            html.Span(f"Error pushing to Braze: {type(e).__name__}",
                      style={'color': '#d32f2f', 'fontWeight': '600'}),
             html.Br(),
             html.Span(f"Details: {str(e)}",
                      style={'color': COLORS['text_secondary'], 'fontSize': '12px', 'marginTop': '5px', 'display': 'block'}),
             html.Br(),
-            html.Span("Please check your Databricks connection and ensure the job is deployed with 'databricks bundle deploy'.",
+            html.Span("Please check your Databricks connection and ensure the table exists.",
                      style={'color': COLORS['text_secondary'], 'fontSize': '13px', 'marginTop': '5px', 'display': 'block'})
         ], style={'padding': '12px', 'backgroundColor': '#ffebee', 'borderRadius': '6px', 'border': '1px solid #ef5350'})
 

@@ -28,11 +28,11 @@ def create_vip_tier_distribution_fig(vip_tiers_df):
     
     # Define custom color palette for VIP tiers
     vip_colors = {
-        'Platinum VIP': '#F35B27',          # Orange
-        'Gold VIP': '#FFB400',              # Yellow/Gold
-        'Silver VIP': '#00A6ED',            # Blue
-        'Bronze VIP': '#7FB800',            # Green
-        'Standard': '#0D2C54'               # Dark Blue/Navy
+        'Platinum VIP (0.9+)': '#0D2C54',           # Dark Blue/Navy
+        'Gold VIP (0.7-0.9)': '#7FB800',            # Green
+        'Silver VIP (0.5-0.7)': '#00A6ED',          # Blue
+        'Bronze VIP (0.3-0.5)': '#FFB400',          # Yellow/Gold
+        'Standard (<0.3)': '#F35B27'               # Orange
     }
     
     fig = px.pie(
