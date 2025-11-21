@@ -682,9 +682,9 @@ def create_metric_card(value, label, color=COLORS['accent']):
 app.layout = html.Div([
     # Fixed logo at the top
     html.Div([
-        html.Img(src='/assets/Betashares_Logo.svg.png', 
+        html.Img(src='/assets/c360-logo.png', 
                 style={
-                    'height': '50px'
+                    'height': '80px',
                 }),
     ], style={
         'position': 'fixed',
@@ -693,7 +693,7 @@ app.layout = html.Div([
         'right': '0',
         'backgroundColor': 'white',
         'zIndex': '1000',
-        'padding': '15px',
+        'padding': '10px',
         'textAlign': 'center',
         'boxShadow': '0 2px 4px rgba(0,0,0,0.1)',
         'borderBottom': f'2px solid {COLORS["accent"]}'
