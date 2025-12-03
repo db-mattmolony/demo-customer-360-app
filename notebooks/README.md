@@ -1,13 +1,24 @@
 # Pipeline Notebooks
 
-This folder contains Databricks notebooks used in the Customer 360 Delta Live Tables (DLT) pipeline.
+This folder contains Databricks notebooks used in the Customer 360 synthetic data generation pipeline.
 
 ## 📓 Notebooks
 
-### `push_to_braze.py`
-Pipeline notebook that prints the current datetime when executed.
+### Synthetic Data Creation (Run in Parallel)
 
-This notebook serves as a simple example for pipeline execution and can be extended to push customer data to Braze.
+- **`_create_synthetic_clv.py`** - Generates synthetic Customer Lifetime Value (CLV) data
+- **`_create_synthetic_location.py`** - Creates synthetic geographic coordinates by city
+- **`_create_synthetic_segments.py`** - Generates market segments (Blue Chip, Crypto, Sustainability, Social Impact)
+- **`_create_synthetic_vip_probability.py`** - Calculates VIP customer probability scores
+
+### Sequential Tasks (Run After Parallel Tasks Complete)
+
+- **`create_synthetic_attributes.py`** - Joins all synthetic tables into final `customer_ml_attributes` table
+- **`_generate_synthetic_emails.py`** - Uses AI to generate realistic email addresses, updates `churn_features` table, and cleans up intermediate tables
+
+### Legacy
+
+- **`push_to_braze.py`** - Legacy notebook for uploading CSV to Unity Catalog (not used in pipeline)
 
 ## 🔧 Development
 
@@ -33,54 +44,59 @@ display(df)
 ```bash
 # From project root
 databricks bundle deploy -t dev
-databricks bundle run customer_360_dlt_pipeline -t dev
+databricks bundle run create_synthetic_ml_attributes_pipeline -t dev
 ```
+
+The job will:
+1. Run all synthetic data creation scripts in parallel (`_create_*.py`)
+2. Wait for all parallel tasks to complete
+3. Run `create_synthetic_attributes.py` to join all tables into final output
+4. Run `_generate_synthetic_emails.py` to generate AI-powered email addresses
+5. Clean up all intermediate tables (only keeping the final `customer_ml_attributes` table)
 
 ## 📋 Notebook Guidelines
 
 When adding new notebooks to this folder:
 
-1. **Use DLT decorators** (`@dlt.table`, `@dlt.view`)
-2. **Include data quality checks** (`@dlt.expect_or_drop`)
+1. **Keep it simple** - Focus on table creation, avoid exploratory code
+2. **No displays** - Remove prints and displays for production
 3. **Add documentation** in markdown cells
-4. **Follow naming conventions**:
-   - Bronze: `bronze_<table_name>`
-   - Silver: `silver_<table_name>`
-   - Gold: `gold_<table_name>`
-5. **Add to pipeline config** in `databricks.yaml`
+4. **Prefix with underscore** if the notebook should run in parallel (e.g., `_create_synthetic_*.py`)
+5. **Add to pipeline** in `databricks.yaml` as a task
 
 ## 🎯 Best Practices
 
-- **Idempotent**: Notebooks should be rerunnable without side effects
-- **Parameterized**: Use widgets or configuration for flexibility
-- **Documented**: Include markdown cells explaining logic
-- **Tested**: Test transformations before adding to pipeline
-- **Quality checks**: Add expectations for critical data fields
+- **Idempotent**: Notebooks should be rerunnable without side effects (use `.write.mode("overwrite").option("overwriteSchema", "true")`)
+- **Focused**: Keep notebooks focused on creating one table
+- **Clean**: Remove exploratory code before committing
+- **Documented**: Include markdown cells explaining the logic
+- **Tested**: Test transformations interactively before adding to pipeline
 
-## 📊 Data Quality
+## 📊 Output Tables
 
-All notebooks should include:
-- Input validation (null checks, data types)
-- Business logic validation (ranges, formats)
-- Output metrics for monitoring
+The pipeline creates the following tables in Unity Catalog:
 
-Example:
-```python
-@dlt.expect_or_drop("valid_user_id", "user_id IS NOT NULL")
-@dlt.expect("reasonable_clv", "customer_lifetime_value BETWEEN 0 AND 100000")
-```
+| Table | Description | Created By | Status |
+|-------|-------------|------------|--------|
+| `mmolony_catalog.default.customer_360_clv` | Customer Lifetime Value | `_create_synthetic_clv.py` | ⚠️ Dropped at end |
+| `mmolony_catalog.default.customer_360_locations` | Geographic coordinates | `_create_synthetic_location.py` | ⚠️ Dropped at end |
+| `mmolony_catalog.default.customer_360_customer_segments` | Market segments | `_create_synthetic_segments.py` | ⚠️ Dropped at end |
+| `mmolony_catalog.default.customer_360_vip` | VIP probabilities | `_create_synthetic_vip_probability.py` | ⚠️ Dropped at end |
+| `mmolony_catalog.dbdemo_customer_churn.customer_ml_attributes` | Final joined table | `create_synthetic_attributes.py` | ✅ Kept |
+| `mmolony_catalog.dbdemo_customer_churn.churn_features` | Updated with AI-generated emails | `_generate_synthetic_emails.py` | ✅ Kept |
 
 ## 🔍 Debugging
 
-View pipeline logs in Databricks UI:
-1. Navigate to **Workflows → Delta Live Tables**
-2. Select **customer-360-dlt-pipeline**
-3. Click **Updates** tab to see execution history
-4. Review **Data Quality** tab for expectation results
+View job logs in Databricks UI:
+1. Navigate to **Workflows → Jobs**
+
+2. Select **create-synthetic-ml-attributes-pipeline**
+3. Click on a run to see task execution details
+4. Review individual task logs for errors
 
 ## 📚 Resources
 
-- [DLT Python API](https://docs.databricks.com/delta-live-tables/python-ref.html)
-- [Data Quality Expectations](https://docs.databricks.com/delta-live-tables/expectations.html)
+- [Databricks Jobs](https://docs.databricks.com/workflows/jobs/jobs.html)
+- [Task Dependencies](https://docs.databricks.com/workflows/jobs/jobs-user-guide.html#task-dependencies)
 - [Notebook Best Practices](https://docs.databricks.com/notebooks/best-practices.html)
 

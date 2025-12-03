@@ -1,38 +1,49 @@
 # Pipeline Configurations
 
-This folder contains configuration files for Databricks Delta Live Tables (DLT) pipelines.
+⚠️ **Note**: This folder contains legacy DLT pipeline configurations. The project now uses **Databricks Jobs** for orchestration (configured in `databricks.yaml`).
 
 ## 📄 Configuration Files
 
-### `customer_360_pipeline_config.json`
-JSON configuration for the Customer 360 DLT pipeline. This file can be imported directly into Databricks UI or used as a reference.
+### `customer_360_pipeline_config.json` (Legacy)
+Original JSON configuration for a DLT pipeline approach. This is kept for reference but is no longer used.
 
-**Key Settings:**
-- Pipeline name and storage location
-- Cluster configuration (autoscaling, Photon)
-- Notebook references
-- Source/target catalog configuration
+**Current Approach:**
+The synthetic data generation pipeline is now defined as a Databricks Job in `databricks.yaml` with:
+- 4 parallel tasks creating individual synthetic data tables
+- 1 final task that joins all tables after parallel tasks complete
 
-## 🎯 Purpose
+## 🚀 Current Pipeline (Databricks Jobs)
 
-While the main pipeline configuration lives in `databricks.yaml` (for DAB deployment), this folder provides:
+The current pipeline is configured in `databricks.yaml` as a job:
 
-1. **Standalone configs**: Can be imported directly in Databricks UI
-2. **Reference templates**: Easy to copy for new pipelines
-3. **Version control**: Track pipeline settings changes over time
-4. **Documentation**: Explicit configuration examples
+```bash
+# Deploy and run the pipeline
+databricks bundle deploy -t dev
+databricks bundle run create_synthetic_ml_attributes_pipeline -t dev
+```
 
-## 🔧 Using Configuration Files
+The job executes:
+1. **Parallel Tasks** (run simultaneously):
+   - `create_clv` → Creates CLV table
+   - `create_location` → Creates location table
+   - `create_segments` → Creates segments table
+   - `create_vip` → Creates VIP probability table
 
-### Option 1: Deploy via DAB (Recommended)
+2. **Sequential Tasks** (run after all parallel tasks complete):
+   - `create_final_table` → Joins all tables into `customer_ml_attributes`
+   - `generate_synthetic_emails` → Uses AI to generate and update email addresses
 
-The `databricks.yaml` in the project root automatically references notebooks. Deploy with:
+## 📋 Legacy DLT Approach
+
+### Option 1: Deploy via DAB (Legacy)
+
+The old DLT approach used `databricks.yaml` with pipeline resources:
 
 ```bash
 databricks bundle deploy -t dev
 ```
 
-### Option 2: Manual Import in Databricks UI
+### Option 2: Manual Import in Databricks UI (Legacy)
 
 1. Navigate to **Workflows → Delta Live Tables**
 2. Click **Create Pipeline**
@@ -41,12 +52,19 @@ databricks bundle deploy -t dev
 5. Adjust paths and settings as needed
 6. Click **Create**
 
-### Option 3: Via Databricks CLI
+## 🔄 Why Jobs Instead of DLT?
 
-```bash
-databricks pipelines create \
-  --config @pipelines/customer_360_pipeline_config.json
-```
+**Advantages of Jobs approach:**
+- ✅ More flexible task orchestration (parallel + sequential)
+- ✅ Better suited for one-off data generation tasks
+- ✅ Simpler configuration and debugging
+- ✅ Lower overhead for non-streaming workloads
+
+**When to use DLT:**
+- Continuous streaming pipelines
+- Complex data quality requirements
+- Automatic schema evolution needs
+- Incremental processing with change data capture
 
 ## ⚙️ Configuration Structure
 

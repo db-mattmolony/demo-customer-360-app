@@ -1,6 +1,12 @@
 bundle:
   name: customer-360-dash-app
 
+sync:
+  include:
+    - src/**
+    - notebooks/**
+    - resources/**
+
 resources:
   apps:
     customer_360_app:
@@ -9,12 +15,47 @@ resources:
       source_code_path: ./src
   
   jobs:
-    push_to_braze_job:
-      name: push-to-braze-job
+    create_synthetic_ml_attributes_pipeline:
+      name: create-synthetic-ml-attributes-pipeline
       tasks:
-        - task_key: push_to_braze
+        # Run all synthetic data creation scripts in parallel
+        - task_key: create_clv
           notebook_task:
-            notebook_path: ./notebooks/push_to_braze.py
+            notebook_path: ./notebooks/_create_synthetic_clv.py
+            source: WORKSPACE
+        
+        - task_key: create_location
+          notebook_task:
+            notebook_path: ./notebooks/_create_synthetic_location.py
+            source: WORKSPACE
+        
+        - task_key: create_segments
+          notebook_task:
+            notebook_path: ./notebooks/_create_synthetic_segments.py
+            source: WORKSPACE
+        
+        - task_key: create_vip
+          notebook_task:
+            notebook_path: ./notebooks/_create_synthetic_vip_probability.py
+            source: WORKSPACE
+        
+        # Run final aggregation after all parallel tasks complete
+        - task_key: create_final_table
+          depends_on:
+            - task_key: create_clv
+            - task_key: create_location
+            - task_key: create_segments
+            - task_key: create_vip
+          notebook_task:
+            notebook_path: ./notebooks/create_synthetic_attributes.py
+            source: WORKSPACE
+        
+        # Generate synthetic emails using AI after final table is created
+        - task_key: generate_synthetic_emails
+          depends_on:
+            - task_key: create_final_table
+          notebook_task:
+            notebook_path: ./notebooks/_generate_synthetic_emails.py
             source: WORKSPACE
 
 targets:
