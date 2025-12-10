@@ -1867,8 +1867,13 @@ def render_tab_content(selected_tab):
                             },
                             className='braze-button'
                             ),
-                            # Notification message
-                            html.Div(id='braze-notification', style={'marginTop': '15px'})
+                            # Notification message with loading indicator
+                            dcc.Loading(
+                                id="loading-braze",
+                                type="circle",
+                                color=COLORS['accent'],
+                                children=html.Div(id='braze-notification', style={'marginTop': '15px'})
+                            )
                         ], style={'flex': '0 0 auto', 'display': 'flex', 'flexDirection': 'column', 'alignItems': 'center', 'paddingRight': '30px', 'borderRight': f'2px solid {COLORS["border"]}'}),
                         
                         # Right side: Braze Information
@@ -2149,8 +2154,8 @@ def update_churn_visualizations(filter_value):
         # For platform, we'll just show the churned_customers
         filtered_platform['active_customers'] = 0
         filtered_timeline = churn_timeline_df.copy()
-        filtered_age = churn_by_age_df.copy()
-        filtered_engagement = churn_engagement_df.copy()
+        filtered_age = churn_by_age_df[churn_by_age_df['risk_category'] == 'At Risk'].copy()
+        filtered_engagement = churn_engagement_df[churn_engagement_df['risk_category'] == 'At Risk'].copy()
         
     elif filter_value == 'not_at_risk':
         # Filter for churn = 0 (not at risk customers)
@@ -2160,8 +2165,8 @@ def update_churn_visualizations(filter_value):
         # For platform, we'll just show the active_customers
         filtered_platform['churned_customers'] = 0
         filtered_timeline = pd.DataFrame()  # No timeline for not at risk
-        filtered_age = pd.DataFrame()  # No age breakdown for not at risk
-        filtered_engagement = pd.DataFrame()  # No engagement for not at risk
+        filtered_age = churn_by_age_df[churn_by_age_df['risk_category'] == 'Not at Risk'].copy()
+        filtered_engagement = churn_engagement_df[churn_engagement_df['risk_category'] == 'Not at Risk'].copy()
     else:
         # Show all customers
         filtered_risk_dist = risk_distribution_df.copy()
@@ -2518,7 +2523,7 @@ def push_to_braze(n_clicks, clv_range, vip_min, segment, churn_risk, country):
         
         # Country
         if country:
-            conditions.append(f"a.country = '{country}'")
+            conditions.append(f"f.country = '{country}'")
         
         where_clause = " AND ".join(conditions) if conditions else "1=1"
         
@@ -2542,19 +2547,19 @@ def push_to_braze(n_clicks, clv_range, vip_min, segment, churn_risk, country):
             )
             SELECT
                 COALESCE(f.user_id, u.user_id, a.user_id) AS user_id,
-                u.email, 
+                a.email, 
                 u.firstname,
                 u.lastname,
                 u.address,
                 struct(
                     f.churn,
                     a.customer_lifetime_value,
-                    a.country,
+                    f.country,
                     a.assigned_city,
                     a.market_segment,
                     a.vip_customer_probability
                 ) AS payload
-            FROM {get_table_name('churn_user_features')} f
+            FROM {get_table_name('churn_features')} f
             FULL OUTER JOIN {get_table_name('churn_users')} u
                 ON f.user_id = u.user_id
             FULL OUTER JOIN {get_table_name('customer_ml_attributes')} a

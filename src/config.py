@@ -3,8 +3,8 @@ Application configuration and constants.
 """
 
 # Database configuration
-DB_CATALOG = 'mmolony_catalog'
-DB_SCHEMA = 'dbdemo_customer_churn'
+DB_CATALOG = 'mmolony_c360'
+DB_SCHEMA = 'dbdemo_lakehouse_retail_360'
 
 # Helper function to build fully qualified table names
 def get_table_name(table: str) -> str:

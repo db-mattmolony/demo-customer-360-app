@@ -105,13 +105,15 @@ class CLVService:
         """
         query = f"""
             SELECT 
-                country,
+                cf.country,
                 COUNT(*) as customer_count,
-                ROUND(AVG(customer_lifetime_value), 2) as avg_clv,
-                ROUND(SUM(customer_lifetime_value), 2) as total_clv
-            FROM {get_table_name('customer_ml_attributes')}
-            WHERE country IS NOT NULL AND customer_lifetime_value IS NOT NULL
-            GROUP BY country
+                ROUND(AVG(ml.customer_lifetime_value), 2) as avg_clv,
+                ROUND(SUM(ml.customer_lifetime_value), 2) as total_clv
+            FROM {get_table_name('customer_ml_attributes')} ml
+            INNER JOIN {get_table_name('churn_features')} cf
+                ON ml.user_id = cf.user_id
+            WHERE cf.country IS NOT NULL AND ml.customer_lifetime_value IS NOT NULL
+            GROUP BY cf.country
             ORDER BY total_clv DESC
         """
         return self.sql_service.execute_query_as_dataframe(query)
@@ -184,7 +186,7 @@ class CLVService:
             SELECT 
                 ml.user_id,
                 ROUND(ml.customer_lifetime_value, 2) as clv,
-                ml.country,
+                cf.country,
                 ml.market_segment,
                 ROUND(ml.vip_customer_probability, 4) as vip_probability,
                 cf.order_count,

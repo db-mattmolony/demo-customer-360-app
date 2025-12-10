@@ -68,8 +68,8 @@ class C360Service:
                     cf.days_since_creation,
                     cf.days_since_last_activity,
                     cf.last_activity_date,
-                    ml.lat,
-                    ml.lon,
+                    ml.latitude as lat,
+                    ml.longitude as lon,
                     ml.customer_lifetime_value,
                     ml.vip_customer_probability,
                     ml.market_segment,
@@ -289,8 +289,8 @@ class C360Service:
                 cf.event_count,
                 cf.days_since_creation,
                 cf.days_since_last_activity,
-                ml.lat,
-                ml.lon
+                ml.latitude as lat,
+                ml.longitude as lon
             FROM {get_table_name('churn_features')} cf
             INNER JOIN {get_table_name('customer_ml_attributes')} ml
                 ON cf.user_id = ml.user_id

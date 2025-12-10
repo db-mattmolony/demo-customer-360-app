@@ -38,6 +38,12 @@ resources:
           notebook_task:
             notebook_path: ./notebooks/_create_synthetic_vip_probability.py
             source: WORKSPACE
+
+                # Generate synthetic emails using AI after final table is created
+        - task_key: generate_synthetic_emails
+          notebook_task:
+            notebook_path: ./notebooks/_generate_synthetic_emails.py
+            source: WORKSPACE
         
         # Run final aggregation after all parallel tasks complete
         - task_key: create_final_table
@@ -46,17 +52,18 @@ resources:
             - task_key: create_location
             - task_key: create_segments
             - task_key: create_vip
+            - task_key: generate_synthetic_emails
           notebook_task:
             notebook_path: ./notebooks/create_synthetic_attributes.py
             source: WORKSPACE
-        
-        # Generate synthetic emails using AI after final table is created
-        - task_key: generate_synthetic_emails
+
+        - task_key: create_braze_sync
           depends_on:
             - task_key: create_final_table
           notebook_task:
-            notebook_path: ./notebooks/_generate_synthetic_emails.py
+            notebook_path: ./notebooks/create_braze_sync.py
             source: WORKSPACE
+        
 
 targets:
   dev:

@@ -103,14 +103,16 @@ class VIPService:
         """
         query = f"""
             SELECT 
-                country,
+                cf.country,
                 COUNT(*) as total_customers,
-                COUNT(CASE WHEN vip_customer_probability >= 0.5 THEN 1 END) as vip_customers,
-                ROUND(100.0 * COUNT(CASE WHEN vip_customer_probability >= 0.5 THEN 1 END) / COUNT(*), 1) as vip_rate_pct,
-                ROUND(AVG(CASE WHEN vip_customer_probability >= 0.5 THEN customer_lifetime_value END), 2) as avg_vip_clv
-            FROM {get_table_name('customer_ml_attributes')}
-            WHERE country IS NOT NULL
-            GROUP BY country
+                COUNT(CASE WHEN ml.vip_customer_probability >= 0.5 THEN 1 END) as vip_customers,
+                ROUND(100.0 * COUNT(CASE WHEN ml.vip_customer_probability >= 0.5 THEN 1 END) / COUNT(*), 1) as vip_rate_pct,
+                ROUND(AVG(CASE WHEN ml.vip_customer_probability >= 0.5 THEN ml.customer_lifetime_value END), 2) as avg_vip_clv
+            FROM {get_table_name('customer_ml_attributes')} ml
+            INNER JOIN {get_table_name('churn_features')} cf
+                ON ml.user_id = cf.user_id
+            WHERE cf.country IS NOT NULL
+            GROUP BY cf.country
             ORDER BY vip_customers DESC
         """
         return self.sql_service.execute_query_as_dataframe(query)
@@ -127,15 +129,17 @@ class VIPService:
         """
         query = f"""
             SELECT 
-                user_id,
-                ROUND(vip_customer_probability, 4) as vip_probability,
-                ROUND(customer_lifetime_value, 2) as clv,
-                country,
-                market_segment,
-                assigned_city
-            FROM {get_table_name('customer_ml_attributes')}
-            WHERE vip_customer_probability >= 0.5
-            ORDER BY vip_customer_probability DESC, customer_lifetime_value DESC
+                ml.user_id,
+                ROUND(ml.vip_customer_probability, 4) as vip_probability,
+                ROUND(ml.customer_lifetime_value, 2) as clv,
+                cf.country,
+                ml.market_segment,
+                ml.assigned_city
+            FROM {get_table_name('customer_ml_attributes')} ml
+            INNER JOIN {get_table_name('churn_features')} cf
+                ON ml.user_id = cf.user_id
+            WHERE ml.vip_customer_probability >= 0.5
+            ORDER BY ml.vip_customer_probability DESC, ml.customer_lifetime_value DESC
             LIMIT {limit}
         """
         return self.sql_service.execute_query_as_dataframe(query)

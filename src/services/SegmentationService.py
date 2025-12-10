@@ -157,14 +157,16 @@ class SegmentationService:
         """
         query = f"""
             SELECT 
-                market_segment,
-                country,
+                ml.market_segment,
+                cf.country,
                 COUNT(*) as customer_count,
-                ROUND(AVG(customer_lifetime_value), 2) as avg_clv
-            FROM {get_table_name('customer_ml_attributes')}
-            WHERE market_segment IS NOT NULL AND country IS NOT NULL
-            GROUP BY market_segment, country
-            ORDER BY market_segment, customer_count DESC
+                ROUND(AVG(ml.customer_lifetime_value), 2) as avg_clv
+            FROM {get_table_name('customer_ml_attributes')} ml
+            INNER JOIN {get_table_name('churn_features')} cf
+                ON ml.user_id = cf.user_id
+            WHERE ml.market_segment IS NOT NULL AND cf.country IS NOT NULL
+            GROUP BY ml.market_segment, cf.country
+            ORDER BY ml.market_segment, customer_count DESC
         """
         return self.sql_service.execute_query_as_dataframe(query)
     

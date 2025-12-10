@@ -12,11 +12,12 @@ from config import DB_CATALOG, DB_SCHEMA
 df = spark.sql(f"""
 CREATE OR REPLACE TABLE {DB_CATALOG}.{DB_SCHEMA}.customer_ml_attributes as 
 SELECT 
-  coalesce(clv.user_id, loc.user_id, seg.user_id, vip.user_id) as user_id,
+  coalesce(clv.user_id, loc.user_id, seg.user_id, vip.user_id, emails.user_id) as user_id,
   clv.* EXCEPT(user_id),
   loc.* EXCEPT(user_id),
   seg.* EXCEPT(user_id),
-  vip.* EXCEPT(user_id)
+  vip.* EXCEPT(user_id),
+  emails.* EXCEPT(user_id)
 FROM {DB_CATALOG}.default.customer_360_clv AS clv
 FULL JOIN {DB_CATALOG}.default.customer_360_locations AS loc
   ON clv.user_id = loc.user_id
@@ -24,5 +25,28 @@ FULL JOIN {DB_CATALOG}.default.customer_360_customer_segments AS seg
   ON clv.user_id = seg.user_id
 FULL JOIN {DB_CATALOG}.default.customer_360_vip AS vip
   ON clv.user_id = vip.user_id
+FULL JOIN {DB_CATALOG}.{DB_SCHEMA}._customer_emails AS emails
+  ON clv.user_id = emails.user_id
 """)
 
+
+# Clean-up Tables 
+spark.sql(f"""
+DROP TABLE IF EXISTS {DB_CATALOG}.default._customer_emails
+""")
+
+spark.sql(f"""
+DROP TABLE IF EXISTS {DB_CATALOG}.default.customer_360_clv
+""")
+
+spark.sql(f"""
+DROP TABLE IF EXISTS {DB_CATALOG}.default.customer_360_locations
+""")
+
+spark.sql(f"""
+DROP TABLE IF EXISTS {DB_CATALOG}.default.customer_360_customer_segments
+""")
+
+spark.sql(f"""
+DROP TABLE IF EXISTS {DB_CATALOG}.default.customer_360_vip
+""")
